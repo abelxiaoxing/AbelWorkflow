@@ -18,7 +18,7 @@ try:
     from tenacity import AsyncRetrying, retry_if_exception, stop_after_attempt, wait_random_exponential
     from tenacity.wait import wait_base
 except ImportError:
-    print("Error: 所需包未安装。请运行: ./groksearch (自动安装依赖) 或 pip install httpx tenacity", file=sys.stderr)
+    print("Error: 所需包未安装。请运行: python scripts/groksearch_entry.py --help 或 pip install httpx tenacity", file=sys.stderr)
     sys.exit(1)
 
 
