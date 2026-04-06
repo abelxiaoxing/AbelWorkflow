@@ -25,24 +25,24 @@ Codex、OpenCode、Claude Code 的 Skills 和 Commands 配置仓库。
 
 | 技能 | 描述 |
 |------|------|
-| **time** | 获取当前时间、时区转换 |
-| **grok-search** | 网页搜索和实时内容检索 |
-| **sequential-think** | 复杂问题的系统化分析 |
-| **dev-browser** | 浏览器自动化与网页交互 |
-| **context7-auto-research** | 自动获取最新文档 |
-| **confidence-check** | 实施前验证（≥90% 信心要求） |
-| **git-commit** | 规范提交信息生成 |
-| **prompt-enhancer** | AI 编码提示词优化 |
+| **time** | 时间和时区工具，获取当前时间及时区转换 |
+| **grok-search** | 通过 Grok API 增强网页搜索与实时内容检索 |
+| **sequential-think** | 多步推理引擎，支持假设检验与分支的复杂分析 |
+| **dev-browser** | 浏览器自动化，支持导航、表单填写、截图与数据提取 |
+| **context7-auto-research** | 自动从 Context7 获取最新库/框架文档 |
+| **confidence-check** | 实施前置信度评估（≥90%），含架构合规与根因识别 |
+| **git-commit** | Conventional Commits 规范提交，智能暂存与消息生成 |
+| **prompt-enhancer** | CoT 推理优化 AI 编码提示词，模糊请求转结构化指令 |
 
 ## 命令概览
 
 | 命令 | 描述 |
 |------|------|
-| **/oc:init** | 初始化 OpenSpec 环境 |
-| **/oc:research** | 需求研究与约束分析 |
-| **/oc:plan** | 制定可执行方案 |
-| **/oc:implementation** | TDD 方式实施 |
-| **/oc:diagnose** | 诊断与修复 |
+| **/oc:init** | 初始化 OpenSpec 环境并验证工具链 |
+| **/oc:research** | 结构化需求探索与约束集生成（不实施） |
+| **/oc:plan** | 将已批准变更细化为零决策可执行方案 |
+| **/oc:implementation** | 以 TDD 方式实施已批准的变更 |
+| **/oc:diagnose** | 系统化根因分析与批量修复报告 |
 
 ## 工作流
 
