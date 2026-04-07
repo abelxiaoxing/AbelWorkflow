@@ -1,71 +1,45 @@
 ---
 name: prompt-enhancer
-description: Enhance and refine prompts for AI coding agents using Chain-of-Thought reasoning. Use when user asks to improve, optimize, rewrite, or enhance a prompt. Transforms vague requests into structured, high-context instructions for Claude Code, Codex, or Gemini CLI.
-allowed-tools: Bash(python3:*), Bash(pe:*), Read, Grep
+description: |
+  Rewrite a raw prompt into a clearer prompt for a coding agent. Use only when the user explicitly asks to improve, optimize, rewrite, or structure a prompt for Codex, Claude Code, Gemini CLI, or another AI agent. Triggers: "improve this prompt", "rewrite this prompt", "optimize this prompt for Codex", "make this prompt better for an AI agent".
+allowed-tools: Bash(python:*), Bash(python3:*), Bash(uv:*), Read, Grep
 ---
 
-# Prompt Enhancer Skill
+# Prompt Enhancer
 
-Transforms vague or simple prompts into structured, high-context instructions optimized for AI coding agents.
+Rewrite raw prompts into concise, structured prompts for coding agents.
 
-## When to Use
+## Use When
 
-- User asks to "improve my prompt" or "make this prompt better"
-- User wants to "optimize this instruction for Claude/Codex"
-- User needs help writing a better prompt for an AI agent
-- User mentions "prompt engineering" or "rewrite this"
+- The input itself is a prompt or instruction for an AI agent.
+- The user explicitly asks to improve, optimize, or rewrite that prompt.
+- The target is a coding agent such as Codex, Claude Code, or Gemini CLI.
 
-## Quick Start
+Do not use this for general writing edits like email, docs, or PR copy.
 
-Run the enhance script with the user's prompt:
-
-```bash
-python3 ~/.agents/skills/prompt-enhancer/scripts/enhance.py "user's raw prompt here"
-```
-
-## How It Works
-
-The enhancer applies these principles:
-
-1. **Add Context**: What project/tech stack is involved?
-2. **Clarify Objective**: What exactly should be accomplished?
-3. **Chain of Thought**: Add step-by-step reasoning instructions
-4. **Define Constraints**: What are the boundaries and requirements?
-5. **Specify Output**: What format should the result be in?
-
-## Output Format
-
-The enhanced prompt follows this structure:
-
-```markdown
-# Context
-[Refined context description]
-
-# Objective
-[Precise task definition]
-
-# Step-by-Step Instructions
-1. [Step 1]
-2. [Step 2]
-...
-
-# Constraints
-- [Constraint 1]
-- [Constraint 2]
-```
-
-## Additional Resources
-
-- For advanced usage patterns, see [ADVANCED.md](ADVANCED.md)
-- For the system prompt template, see [TEMPLATE.md](TEMPLATE.md)
-
-## Alternative: Use `pe` CLI
-
-If you have the `pe` CLI installed globally:
+## Do
 
 ```bash
-pe "user's raw prompt here"
+python "<SKILL_DIR>/scripts/prompt_enhancer_entry.py" "user's raw prompt here"
 ```
 
-Install via: `npm install -g prompt-enhancer` (or clone repo and `npm link`)
+- Do not call `scripts/enhance.py` directly.
+- Use the installed skill directory for `<SKILL_DIR>`.
+- Optional setup: `cp "<SKILL_DIR>/.env.example" "<SKILL_DIR>/.env"`
 
+## Output
+
+- Read the enhanced prompt from `stdout`.
+- Keep `stderr` for usage or optional debug output only.
+- Preserve the user's intent and explicit constraints.
+- Add structure and missing execution context only when it helps the agent act.
+- When falling back to the local template, use placeholders for unknown context instead of inventing new requirements.
+
+## Notes
+
+- Local config file: `<SKILL_DIR>/.env`
+- The entrypoint auto-loads `<SKILL_DIR>/.env` before bootstrap and dependency install.
+- Optional debug flag: `PE_DEBUG=1`
+- Bootstrap controls: `PROMPT_ENHANCER_VENV_DIR`, `PROMPT_ENHANCER_PYTHON`, `AGENTS_SKILLS_PYTHON`
+- Setup and troubleshooting: [ADVANCED.md](ADVANCED.md)
+- Prompt template reference: [TEMPLATE.md](TEMPLATE.md)

@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
-"""
-Prompt Enhancer Script - Standalone Python script for enhancing prompts.
-Can be used with or without an API key.
-"""
+"""Prompt Enhancer CLI."""
 
-import sys
 import os
-import subprocess
+import sys
+
+from _dotenv import load_dotenv
+
+load_dotenv()
+
 
 SYSTEM_PROMPT = """
 You are an expert Prompt Engineer for Coding Agents (Claude Code, Codex, Gemini CLI).
@@ -41,21 +42,34 @@ Output Template:
 """
 
 
+def debug_enabled() -> bool:
+    """Return True when debug logging is explicitly enabled."""
+    value = os.environ.get("PE_DEBUG", "")
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def get_env_or_default(name: str, default: str) -> str:
+    """Return default when an env var is missing or blank."""
+    value = os.environ.get(name)
+    if value is None:
+        return default
+
+    value = value.strip()
+    return value or default
+
+
 def enhance_with_anthropic(prompt: str, api_key: str) -> str:
     """Enhance prompt using Anthropic API."""
     try:
         import anthropic
     except ImportError:
-        print("Installing anthropic package...", file=sys.stderr)
-        subprocess.run(
-            [sys.executable, "-m", "pip", "install", "anthropic", "-q"],
-            check=True
-        )
-        import anthropic
-    
+        raise RuntimeError(
+            "Missing dependency: anthropic. Install dependencies for the configured provider."
+        ) from None
+
     client = anthropic.Anthropic(api_key=api_key)
     message = client.messages.create(
-        model=os.environ.get("PE_MODEL", "claude-sonnet-4-20250514"),
+        model=get_env_or_default("PE_MODEL", "claude-sonnet-4-20250514"),
         max_tokens=2048,
         system=SYSTEM_PROMPT,
         messages=[{"role": "user", "content": prompt}]
@@ -68,16 +82,13 @@ def enhance_with_openai(prompt: str, api_key: str) -> str:
     try:
         import openai
     except ImportError:
-        print("Installing openai package...", file=sys.stderr)
-        subprocess.run(
-            [sys.executable, "-m", "pip", "install", "openai", "-q"],
-            check=True
-        )
-        import openai
-    
+        raise RuntimeError(
+            "Missing dependency: openai. Install dependencies for the configured provider."
+        ) from None
+
     client = openai.OpenAI(api_key=api_key)
     response = client.chat.completions.create(
-        model=os.environ.get("PE_MODEL", "gpt-4o"),
+        model=get_env_or_default("PE_MODEL", "gpt-4o"),
         messages=[
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": prompt}
@@ -89,54 +100,53 @@ def enhance_with_openai(prompt: str, api_key: str) -> str:
 def enhance_locally(prompt: str) -> str:
     """Enhance prompt using local template (no API)."""
     return f"""# Context
-[Analyze the context for: {prompt}]
+[Add only the known repo, file, stack, or runtime context. If unknown, use placeholders like [files], [stack], or [environment].]
 
 # Objective
 {prompt}
 
 # Step-by-Step Instructions
-1. First, understand the current state and requirements
-2. Identify the key components involved
-3. Plan the implementation approach
-4. Execute the changes step by step
-5. Verify the results
+1. Restate the task precisely without changing the user's intent.
+2. Carry forward every explicit constraint from the original prompt.
+3. Add only the minimum missing execution context needed to act.
+4. If important details are unknown, leave placeholders instead of inventing requirements.
+5. Return the rewritten prompt in this structure.
 
 # Constraints
-- Follow existing code style and conventions
-- Ensure backward compatibility
-- Add appropriate error handling
+- Preserve the user's intent and explicit constraints.
+- Do not invent product, compatibility, or implementation requirements.
+- Keep the result concise, specific, and actionable for a coding agent.
 """
 
 
 def main():
     if len(sys.argv) < 2:
-        print("Usage: enhance.py <prompt>", file=sys.stderr)
-        print("Example: enhance.py 'Write a login component'", file=sys.stderr)
+        print("Usage: prompt_enhancer_entry.py <prompt>", file=sys.stderr)
+        print("Example: prompt_enhancer_entry.py 'Write a login component'", file=sys.stderr)
+        print("Environment: ANTHROPIC_API_KEY | OPENAI_API_KEY | PE_MODEL", file=sys.stderr)
         sys.exit(1)
-    
+
     prompt = " ".join(sys.argv[1:])
-    
+
     # Try Anthropic first, then OpenAI, then local
     anthropic_key = os.environ.get("ANTHROPIC_API_KEY")
     openai_key = os.environ.get("OPENAI_API_KEY")
-    
+
     try:
         if anthropic_key:
             result = enhance_with_anthropic(prompt, anthropic_key)
         elif openai_key:
             result = enhance_with_openai(prompt, openai_key)
         else:
-            # No API key - use local template
-            print("Note: No API key found, using local template.", file=sys.stderr)
             result = enhance_locally(prompt)
-        
+
         print(result)
     except Exception as e:
-        print(f"Error: {e}", file=sys.stderr)
-        print("\nFalling back to local template...", file=sys.stderr)
+        if debug_enabled():
+            print(f"Error: {e}", file=sys.stderr)
+            print("\nFalling back to local template...", file=sys.stderr)
         print(enhance_locally(prompt))
 
 
 if __name__ == "__main__":
     main()
-
