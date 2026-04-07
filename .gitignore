@@ -11,3 +11,5 @@ skills/dev-browser/tmp/
 */build/
 .claude/
 .codex/
+*pycache*/
+.codex

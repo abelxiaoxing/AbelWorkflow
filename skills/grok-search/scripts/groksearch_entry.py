@@ -8,23 +8,35 @@ import sys
 from pathlib import Path
 from typing import Optional
 
+from _dotenv import load_dotenv
+
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
-VENV_DIR = Path(os.environ.get("GROKSEARCH_VENV_DIR", str(ROOT_DIR / ".venv")))
 REQ_FILE = ROOT_DIR / "requirements.txt"
 CLI_PY = ROOT_DIR / "scripts" / "groksearch_cli.py"
 
 
+def venv_dir() -> Path:
+    configured = os.environ.get("GROKSEARCH_VENV_DIR")
+    if not configured:
+        return ROOT_DIR / ".venv"
+    dir_path = Path(configured).expanduser()
+    if dir_path.is_absolute():
+        return dir_path
+    return ROOT_DIR / dir_path
+
+
 def venv_python() -> Optional[Path]:
+    dir_path = venv_dir()
     candidates = []
     if sys.platform == "win32":
         candidates.extend(
             [
-                VENV_DIR / "Scripts" / "python.exe",
-                VENV_DIR / "Scripts" / "python",
+                dir_path / "Scripts" / "python.exe",
+                dir_path / "Scripts" / "python",
             ]
         )
-    candidates.append(VENV_DIR / "bin" / "python")
+    candidates.append(dir_path / "bin" / "python")
     for candidate in candidates:
         if candidate.is_file():
             return candidate
@@ -57,19 +69,20 @@ def find_system_python() -> Optional[str]:
 
 
 def create_venv() -> None:
+    dir_path = venv_dir()
     if has_uv():
         command = ["uv", "venv"]
         spec = python_spec()
         if spec:
             command.extend(["--python", spec])
-        command.append(str(VENV_DIR))
+        command.append(str(dir_path))
         subprocess.run(command, check=True)
         return
     python_bin = find_system_python()
     if not python_bin:
         print("Error: No usable uv or python found. Cannot create virtual environment.", file=sys.stderr)
         sys.exit(1)
-    subprocess.run([python_bin, "-m", "venv", str(VENV_DIR)], check=True)
+    subprocess.run([python_bin, "-m", "venv", str(dir_path)], check=True)
 
 
 def install_deps(python_bin: Path) -> None:
@@ -90,15 +103,17 @@ def install_deps(python_bin: Path) -> None:
 
 
 def validate_venv_dir() -> None:
-    if VENV_DIR.exists() and not VENV_DIR.is_dir():
-        print(f"Error: {VENV_DIR} exists but is not a directory.", file=sys.stderr)
+    dir_path = venv_dir()
+    if dir_path.exists() and not dir_path.is_dir():
+        print(f"Error: {dir_path} exists but is not a directory.", file=sys.stderr)
         sys.exit(1)
-    if VENV_DIR.is_dir() and not (VENV_DIR / "pyvenv.cfg").exists() and venv_python() is None:
-        print(f"Error: {VENV_DIR} exists but is not a valid venv.", file=sys.stderr)
+    if dir_path.is_dir() and not (dir_path / "pyvenv.cfg").exists() and venv_python() is None:
+        print(f"Error: {dir_path} exists but is not a valid venv.", file=sys.stderr)
         sys.exit(1)
 
 
 def main() -> None:
+    load_dotenv()
     validate_venv_dir()
     python_bin = venv_python()
     if python_bin is None:

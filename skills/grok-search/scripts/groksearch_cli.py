@@ -46,8 +46,8 @@ def load_dotenv() -> bool:
                         if (value.startswith('"') and value.endswith('"')) or \
                            (value.startswith("'") and value.endswith("'")):
                             value = value[1:-1]
-                        # 仅在环境变量中未设置时才设置
-                        if key and key not in os.environ:
+                        # 允许 .env 覆盖空字符串环境变量
+                        if key and not os.environ.get(key):
                             os.environ[key] = value
             return True
         except IOError:
