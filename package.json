@@ -4,7 +4,7 @@
   "description": "Install AbelWorkflow into ~/.agents and create Claude/Codex symlinks.",
   "type": "module",
   "bin": {
-    "abelworkflow": "./bin/abelworkflow.mjs"
+    "abelworkflow": "bin/abelworkflow.mjs"
   },
   "files": [
     "bin",
