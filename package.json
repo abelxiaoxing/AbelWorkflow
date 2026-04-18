@@ -3,6 +3,9 @@
   "version": "0.6.3",
   "description": "Install AbelWorkflow into ~/.agents and create Claude/Codex symlinks.",
   "type": "module",
+  "scripts": {
+    "test:contracts": "node --test test/runtime-doc-contracts.test.mjs"
+  },
   "bin": {
     "abelworkflow": "bin/abelworkflow.mjs"
   },

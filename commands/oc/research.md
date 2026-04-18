@@ -26,7 +26,7 @@ Produce constraint sets that narrow the solution space, plus measurable success 
 
 ## Phase 0 — Requirement Intake Gate (MANDATORY)
 - **MUST** confirm the user’s requirement exists and is clear **before** any research/action.
-- If missing/unclear, **MUST** use `AskUserQuestions` to collect: goal, in-scope area, top scenarios, non-goals, known constraints, success signals.
+- If missing/unclear, **MUST** ask the user directly in a concise grouped message to collect: goal, in-scope area, top scenarios, non-goals, known constraints, success signals.
 - **MUST NOT** run `/opsx:new`, any codebase retrieval, spawn subagents, or generate artifacts until the user confirms a brief requirement summary.
 
 ---
@@ -97,7 +97,7 @@ All explore subagents MUST return valid JSON using this schema:
 
 ## Phase 7 — User Interaction for Ambiguity Resolution
 - Compile prioritized list of open questions from aggregated reports.
-- Use `AskUserQuestions` tool to present questions systematically:
+- Present questions directly to the user in a concise grouped message:
   * Group related questions together.
   * Provide context for each question.
   * Suggest default answers when applicable.
@@ -122,5 +122,5 @@ All explore subagents MUST return valid JSON using this schema:
   - `openspec status --change <name>` - Check artifact completion status
   - `openspec instructions proposal --change <name>` - Get proposal instructions
 - Validate subagent outputs conform to template before aggregation.
-- Use `AskUserQuestions` for ANY ambiguity—do not assume or guess.
+- Ask the user directly for ANY ambiguity—do not assume or guess.
 <!-- OC:RESEARCH:END -->

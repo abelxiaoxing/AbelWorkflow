@@ -77,7 +77,7 @@ argument-hint: [change_name]
 - Use `openspec list --specs` to check for conflicts with existing specifications.
 - Search existing patterns with `rg -n "INVARIANT:|PROPERTY:|Constraint:" openspec/` before defining new ones.
 - For complex proposals, consider running steps 2-4 iteratively on sub-components.
-- Use `AskUserQuestions` for ANY ambiguity—do not assume or guess.
+- Ask the user directly for ANY ambiguity—do not assume or guess.
 
 **Exit Criteria**
 A proposal is ready to exit the Plan phase only when:
