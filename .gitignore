@@ -13,3 +13,4 @@ skills/dev-browser/tmp/
 .codex/
 *pycache*/
 .codex
+openspec/
