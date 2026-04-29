@@ -24,7 +24,7 @@ Use this skill for web search, webpage retrieval, and current-information lookup
 ```bash
 cp "<SKILL_DIR>/.env.example" "<SKILL_DIR>/.env"
 
-python "<SKILL_DIR>/scripts/groksearch_entry.py" web_search --query "search terms" [--platform "GitHub"] [--min-results 3] [--max-results 10] [--model "grok-4-fast"] [--extra-sources 3]
+python "<SKILL_DIR>/scripts/groksearch_entry.py" web_search --query "search terms" [--platform "GitHub"] [--min-results 3] [--max-results 10] [--model "grok-4.20-auto"] [--extra-sources 3]
 
 python "<SKILL_DIR>/scripts/groksearch_entry.py" web_fetch --url "https://..." [--out file.md] [--fallback-grok]
 
