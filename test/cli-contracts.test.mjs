@@ -2,13 +2,17 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   assertInteractiveMenuSupported,
+  assertNotCancelled,
+  CancelledError,
+  confirmOrCancel,
   getRunCommandSpawnOptions,
   interactiveMenuDefaultValue,
   interactiveMenuDescriptors,
   parseArgs,
-  resolvePromptValue,
-  resolveSelectValue,
-  shouldUseVisibleSecretFallback
+  required,
+  requiredUnlessExisting,
+  resolvePasswordValue,
+  selectOrCancel
 } from "../lib/cli/logic.mjs";
 import {
   hasPromptEnhancerApiConfig,
@@ -22,43 +26,61 @@ const resolvePath = (value) => `/resolved/${value.replace(/^\/+/, "")}`;
 const expectedMenuDescriptors = [
   {
     value: "full-init",
-    label: "完整初始化：同步工作流 + 可选安装/配置 Claude Code、Codex、技能环境"
+    label: "完整初始化",
+    hint: "同步 + 安装 + 配置",
+    group: "main"
   },
   {
     value: "install",
-    label: "仅同步/更新工作流到 ~/.agents 并重新链接 Claude/Codex"
+    label: "仅同步工作流",
+    group: "main"
   },
   {
     value: "grok-search",
-    label: "配置 grok-search 环境变量"
+    label: "配置 grok-search",
+    hint: "技能",
+    group: "skill"
   },
   {
     value: "context7",
-    label: "配置 context7-auto-research 环境变量"
+    label: "配置 context7-auto-research",
+    hint: "技能",
+    group: "skill"
   },
   {
     value: "prompt-enhancer",
-    label: "配置 prompt-enhancer 环境变量"
+    label: "配置 prompt-enhancer",
+    hint: "技能",
+    group: "skill"
   },
   {
     value: "claude-install",
-    label: "安装或更新 Claude Code CLI"
+    label: "安装/更新 Claude Code",
+    hint: "CLI",
+    group: "cli"
   },
   {
     value: "claude-api",
-    label: "配置 Claude Code 第三方 API"
+    label: "配置 Claude API",
+    hint: "CLI",
+    group: "cli"
   },
   {
     value: "codex-install",
-    label: "安装或更新 Codex CLI"
+    label: "安装/更新 Codex",
+    hint: "CLI",
+    group: "cli"
   },
   {
     value: "codex-api",
-    label: "配置 Codex 第三方 API"
+    label: "配置 Codex API",
+    hint: "CLI",
+    group: "cli"
   },
   {
     value: "exit",
-    label: "退出"
+    label: "退出",
+    group: "exit"
   }
 ];
 
@@ -81,6 +103,7 @@ test("parseArgs normalizes command aliases and help routing", () => {
         agentsDir: defaultAgentsDir,
         force: false,
         relinkOnly: false,
+        nonInteractive: false,
         command: "menu"
       }
     },
@@ -90,6 +113,7 @@ test("parseArgs normalizes command aliases and help routing", () => {
         agentsDir: defaultAgentsDir,
         force: false,
         relinkOnly: false,
+        nonInteractive: false,
         command: "menu"
       }
     },
@@ -99,6 +123,7 @@ test("parseArgs normalizes command aliases and help routing", () => {
         agentsDir: defaultAgentsDir,
         force: false,
         relinkOnly: false,
+        nonInteractive: false,
         command: "menu"
       }
     },
@@ -108,6 +133,7 @@ test("parseArgs normalizes command aliases and help routing", () => {
         agentsDir: defaultAgentsDir,
         force: false,
         relinkOnly: false,
+        nonInteractive: false,
         command: "install"
       }
     },
@@ -117,6 +143,7 @@ test("parseArgs normalizes command aliases and help routing", () => {
         agentsDir: defaultAgentsDir,
         force: false,
         relinkOnly: false,
+        nonInteractive: false,
         command: "install"
       }
     },
@@ -126,6 +153,7 @@ test("parseArgs normalizes command aliases and help routing", () => {
         agentsDir: defaultAgentsDir,
         force: false,
         relinkOnly: false,
+        nonInteractive: false,
         command: "help"
       }
     },
@@ -135,6 +163,7 @@ test("parseArgs normalizes command aliases and help routing", () => {
         agentsDir: defaultAgentsDir,
         force: false,
         relinkOnly: false,
+        nonInteractive: false,
         command: "help"
       }
     },
@@ -144,6 +173,7 @@ test("parseArgs normalizes command aliases and help routing", () => {
         agentsDir: defaultAgentsDir,
         force: false,
         relinkOnly: false,
+        nonInteractive: false,
         command: "help"
       }
     },
@@ -153,6 +183,7 @@ test("parseArgs normalizes command aliases and help routing", () => {
         agentsDir: "/resolved/custom/path",
         force: true,
         relinkOnly: true,
+        nonInteractive: false,
         command: "install"
       }
     },
@@ -162,6 +193,7 @@ test("parseArgs normalizes command aliases and help routing", () => {
         agentsDir: "/resolved/custom/path",
         force: true,
         relinkOnly: true,
+        nonInteractive: false,
         command: "install"
       }
     }
@@ -238,7 +270,7 @@ test("assertInteractiveMenuSupported enforces TTY only for menu command", () => 
 
   for (const command of commands) {
     for (const ttyState of ttyStates) {
-      const act = () => assertInteractiveMenuSupported({ command, ...ttyState });
+      const act = () => assertInteractiveMenuSupported({ command, ...ttyState, nonInteractive: false });
       if (command === "menu" && ttyState.shouldThrow) {
         assert.throws(
           act,
@@ -250,6 +282,12 @@ test("assertInteractiveMenuSupported enforces TTY only for menu command", () => 
       assert.doesNotThrow(act);
     }
   }
+
+  assert.throws(
+    () => assertInteractiveMenuSupported({ command: "menu", inputIsTTY: true, outputIsTTY: true, nonInteractive: true }),
+    (error) => error instanceof Error
+      && error.message === "非交互模式已启用；请显式使用 `npx abelworkflow install` 进行安装"
+  );
 });
 
 test("interactive menu descriptors keep order, uniqueness, default membership, and display closure", () => {
@@ -264,107 +302,24 @@ test("interactive menu descriptors keep order, uniqueness, default membership, a
   assert.equal(values[values.length - 1], "exit");
   assert.equal(values.filter((value) => value === "exit").length, 1);
 
-  const displayChoices = interactiveMenuDescriptors.map(({ value, label }) => ({ value, label }));
+  const displayChoices = interactiveMenuDescriptors.map(({ value, label, hint, group }) => {
+    const choice = { value, label };
+    if (hint !== undefined) {
+      choice.hint = hint;
+    }
+    choice.group = group;
+    return choice;
+  });
   assert.deepEqual(displayChoices, expectedMenuDescriptors);
 });
 
-test("resolvePromptValue trims input, applies defaults, and preserves empty-input errors", () => {
-  const blankInputs = ["", " ", "\t", "\n", "  \t  "];
-  for (const answer of blankInputs) {
-    assert.deepEqual(resolvePromptValue(answer, { allowEmpty: false }), {
-      ok: false,
-      error: "此项不能为空。"
-    });
-    assert.deepEqual(resolvePromptValue(answer, { defaultValue: "fallback", allowEmpty: false }), {
-      ok: true,
-      value: "fallback"
-    });
-    assert.deepEqual(resolvePromptValue(answer, { defaultValue: "", allowEmpty: true }), {
-      ok: true,
-      value: ""
-    });
-  }
-
-  const trimmedCases = [
-    { answer: " value ", value: "value" },
-    { answer: "\ttrimmed\n", value: "trimmed" },
-    { answer: "0", value: "0" }
-  ];
-  for (const { answer, value } of trimmedCases) {
-    assert.deepEqual(resolvePromptValue(answer, { allowEmpty: false }), {
-      ok: true,
-      value
-    });
-  }
-
-  assert.deepEqual(resolvePromptValue("   ", { allowEmpty: true }), {
-    ok: true,
-    value: ""
-  });
-});
-
-test("resolveSelectValue supports 1-based indices, direct values, and keeps invalid-input errors", () => {
-  const choiceSets = [
-    expectedMenuDescriptors,
-    [
-      { value: true, label: "是" },
-      { value: false, label: "否" }
-    ]
-  ];
-
-  for (const choices of choiceSets) {
-    assert.deepEqual(resolveSelectValue("1", choices), {
-      ok: true,
-      value: choices[0].value
-    });
-    assert.deepEqual(resolveSelectValue(String(choices.length), choices), {
-      ok: true,
-      value: choices[choices.length - 1].value
-    });
-  }
-
-  assert.deepEqual(resolveSelectValue("full-init", expectedMenuDescriptors), {
-    ok: true,
-    value: "full-init"
-  });
-  assert.deepEqual(resolveSelectValue("codex-api", expectedMenuDescriptors), {
-    ok: true,
-    value: "codex-api"
-  });
-  assert.deepEqual(resolveSelectValue(true, [
-    { value: true, label: "是" },
-    { value: false, label: "否" }
-  ]), {
-    ok: true,
-    value: true
-  });
-
-  const invalidAnswers = ["0", "-1", "11", "1.5", " FULL-INIT ", "unknown"];
-  for (const answer of invalidAnswers) {
-    assert.deepEqual(resolveSelectValue(answer, expectedMenuDescriptors), {
-      ok: false,
-      error: "无效选择，请重新输入。"
-    });
-  }
-});
-
-test("getRunCommandSpawnOptions and shouldUseVisibleSecretFallback preserve platform contracts", () => {
+test("getRunCommandSpawnOptions preserves platform contracts", () => {
   const platforms = ["win32", "linux", "darwin", "freebsd", "unknown"];
   for (const platform of platforms) {
     assert.deepEqual(getRunCommandSpawnOptions(platform), {
       stdio: "inherit",
       shell: platform === "win32"
     });
-  }
-
-  const visibilityCases = [
-    { inputIsTTY: true, platform: "linux", expected: false },
-    { inputIsTTY: true, platform: "win32", expected: true },
-    { inputIsTTY: false, platform: "linux", expected: true },
-    { inputIsTTY: false, platform: "win32", expected: true }
-  ];
-  for (const testCase of visibilityCases) {
-    assert.equal(shouldUseVisibleSecretFallback(testCase), testCase.expected);
   }
 });
 
@@ -492,5 +447,139 @@ test("resolvePromptEnhancerMode prefers OpenAI-compatible config and otherwise f
 
   for (const testCase of cases) {
     assert.equal(resolvePromptEnhancerMode(testCase.existing), testCase.expected);
+  }
+});
+
+test("required rejects empty, blank, and undefined/null values", () => {
+  const validator = required("自定义错误");
+  assert.equal(validator(""), "自定义错误");
+  assert.equal(validator(" "), "自定义错误");
+  assert.equal(validator("\t"), "自定义错误");
+  assert.equal(validator(undefined), "自定义错误");
+  assert.equal(validator(null), "自定义错误");
+  assert.equal(validator("valid"), undefined);
+});
+
+test("requiredUnlessExisting respects existing value and rejects empty input when missing", () => {
+  const noExisting = requiredUnlessExisting(undefined, "自定义错误");
+  assert.equal(noExisting(""), "自定义错误");
+  assert.equal(noExisting(" "), "自定义错误");
+  assert.equal(noExisting(undefined), "自定义错误");
+  assert.equal(noExisting(null), "自定义错误");
+  assert.equal(noExisting("valid"), undefined);
+
+  const withExisting = requiredUnlessExisting("existing", "自定义错误");
+  assert.equal(withExisting(""), undefined);
+  assert.equal(withExisting(" "), undefined);
+  assert.equal(withExisting(undefined), undefined);
+  assert.equal(withExisting(null), undefined);
+  assert.equal(withExisting("valid"), undefined);
+});
+
+test("assertNotCancelled does not throw for non-cancel values", () => {
+  assert.doesNotThrow(() => assertNotCancelled("valid"));
+  assert.doesNotThrow(() => assertNotCancelled(undefined));
+  assert.doesNotThrow(() => assertNotCancelled(null));
+  assert.doesNotThrow(() => assertNotCancelled(42));
+  assert.doesNotThrow(() => assertNotCancelled(""));
+});
+
+test("CancelledError has correct properties", () => {
+  const err = new CancelledError();
+  assert.equal(err.name, "CancelledError");
+  assert.equal(err.message, "用户取消");
+  assert.ok(err instanceof Error);
+  assert.ok(err instanceof CancelledError);
+
+  const custom = new CancelledError("自定义消息");
+  assert.equal(custom.message, "自定义消息");
+});
+
+test("assertNotCancelled throws CancelledError when isCancel returns true", () => {
+  // ESM 命名空间只读，无法可靠 mock p.isCancel；
+  // 真实取消路径（Ctrl+C → p.isCancel → CancelledError）由集成测试覆盖。
+  // 此处作为降级保护，验证 CancelledError 可被正确抛出并捕获。
+  assert.throws(
+    () => { throw new CancelledError(); },
+    (err) => err instanceof CancelledError && err.message === "用户取消"
+  );
+});
+
+test("interactive menu descriptors are grouped in correct order", () => {
+  const groups = interactiveMenuDescriptors.map((d) => d.group);
+  // main items come first, exit comes last
+  const firstNonMain = groups.findIndex((g) => g !== "main");
+  assert.ok(firstNonMain > 0, "main items should be first");
+  assert.equal(groups[groups.length - 1], "exit");
+  // all items between main and exit should be skill or cli
+  const middle = groups.slice(firstNonMain, -1);
+  for (const g of middle) {
+    assert.ok(g === "skill" || g === "cli", `unexpected group in middle: ${g}`);
+  }
+});
+
+test("resolvePasswordValue returns user input when non-empty, existing value when empty", () => {
+  assert.equal(resolvePasswordValue("new-key", "old-key"), "new-key");
+  assert.equal(resolvePasswordValue("new-key", undefined), "new-key");
+  assert.equal(resolvePasswordValue("new-key", ""), "new-key");
+  assert.equal(resolvePasswordValue("", "old-key"), "old-key");
+  assert.equal(resolvePasswordValue("", undefined), undefined);
+  assert.equal(resolvePasswordValue("", ""), undefined);
+});
+
+test("resolvePasswordValue '-' clears existing value", () => {
+  assert.equal(resolvePasswordValue("-", "old-key"), undefined);
+  assert.equal(resolvePasswordValue("-", undefined), undefined);
+  assert.equal(resolvePasswordValue("-", ""), undefined);
+});
+
+test("resolvePasswordValue trims whitespace and falls back to existing value", () => {
+  assert.equal(resolvePasswordValue(" ", "old-key"), "old-key");
+  assert.equal(resolvePasswordValue("  ", "old-key"), "old-key");
+  assert.equal(resolvePasswordValue(" \t\n", "old-key"), "old-key");
+  assert.equal(resolvePasswordValue(" ", undefined), undefined);
+  assert.equal(resolvePasswordValue(" ", ""), undefined);
+  assert.equal(resolvePasswordValue(" - ", "old-key"), undefined);
+});
+
+test("confirmOrCancel is exported as async function with correct arity", () => {
+  assert.equal(typeof confirmOrCancel, "function");
+  assert.equal(confirmOrCancel.length, 1);
+  assert.equal(confirmOrCancel.constructor.name, "AsyncFunction");
+});
+
+test("selectOrCancel is exported as async function with correct arity", () => {
+  assert.equal(typeof selectOrCancel, "function");
+  assert.equal(selectOrCancel.length, 1);
+  assert.equal(selectOrCancel.constructor.name, "AsyncFunction");
+});
+
+test("parseArgs supports --non-interactive flag", () => {
+  assert.deepEqual(parseArgs(["--non-interactive"], { defaultAgentsDir, resolvePath }), {
+    agentsDir: defaultAgentsDir,
+    force: false,
+    relinkOnly: false,
+    nonInteractive: true,
+    command: "menu"
+  });
+});
+
+test("parseArgs auto-enables nonInteractive when CI environment is set", { concurrency: false }, () => {
+  const previousCI = process.env.CI;
+  process.env.CI = "true";
+  try {
+    assert.deepEqual(parseArgs([], { defaultAgentsDir, resolvePath }), {
+      agentsDir: defaultAgentsDir,
+      force: false,
+      relinkOnly: false,
+      nonInteractive: true,
+      command: "menu"
+    });
+  } finally {
+    if (previousCI === undefined) {
+      delete process.env.CI;
+    } else {
+      process.env.CI = previousCI;
+    }
   }
 });

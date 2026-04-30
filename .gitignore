@@ -12,5 +12,5 @@ skills/dev-browser/tmp/
 .claude/
 .codex/
 *pycache*/
-.codex
 openspec/
+package-lock.json
