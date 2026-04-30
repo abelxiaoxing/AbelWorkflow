@@ -1,6 +1,6 @@
 {
   "name": "abelworkflow",
-  "version": "0.6.5",
+  "version": "0.7.0",
   "description": "Install AbelWorkflow into ~/.agents and create Claude/Codex symlinks.",
   "type": "module",
   "scripts": {
