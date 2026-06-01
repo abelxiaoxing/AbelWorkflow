@@ -13,7 +13,7 @@
 
 ## Context Rules
 
-- Use `mcp__augment-context-engine__codebase-retrieval` as the primary codebase search tool
+- {{CODEBASE_RETRIEVAL_POLICY}}
 - Rely only on project code plus `grok/context7` results
 - If information is insufficient or uncertain, state it explicitly
 

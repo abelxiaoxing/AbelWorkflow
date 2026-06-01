@@ -31,7 +31,7 @@ argument-hint: <problem-description>
 
 **Steps**
 1. Parse input, infer scope, and split into issue list (single or multiple).
-2. For each issue in parallel: collect logs/traces and locate code via `mcp__augment-context-engine__codebase-retrieval`.
+2. For each issue in parallel: collect logs/traces and locate code via the configured codebase retrieval policy.
 3. For each issue in parallel: perform root cause analysis; use `/sequential-think` for multi-component chains.
 4. Build dependency/conflict graph across issues and compute safe fix order.
 5. Run `/confidence-check` per issue; only issues with score ≥90% can move to fix generation.

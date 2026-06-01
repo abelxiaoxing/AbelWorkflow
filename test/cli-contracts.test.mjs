@@ -1,5 +1,9 @@
+import { spawnSync } from "node:child_process";
 import test from "node:test";
 import assert from "node:assert/strict";
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import {
   assertInteractiveMenuSupported,
   assertNotCancelled,
@@ -15,13 +19,42 @@ import {
   selectOrCancel
 } from "../lib/cli/logic.mjs";
 import {
+  applyClaudePermissionFeature,
+  buildDefaultClaudeSettings,
   hasPromptEnhancerApiConfig,
+  getAugmentContextEnginePromptOptions,
   mergeCodexAuthData,
+  mergeClaudeSettingsWithDefaults,
+  renderManagedWorkflowContent,
+  resolveAugmentContextEngineFeature,
   resolvePromptEnhancerMode
 } from "../lib/cli.mjs";
 
 const defaultAgentsDir = "/home/test/.agents";
 const resolvePath = (value) => `/resolved/${value.replace(/^\/+/, "")}`;
+const repoRoot = new URL("../", import.meta.url);
+
+function mkdtempAgentsHome() {
+  return mkdtempSync(join(tmpdir(), "abelworkflow-source-"));
+}
+
+function copySourceInstallFixture(agentsDir) {
+  mkdirSync(agentsDir, { recursive: true });
+  for (const entry of [
+    "bin",
+    "lib",
+    "commands",
+    "skills",
+    "AGENTS.md",
+    "README.md",
+    "package.json",
+    ".skill-lock.json",
+    ".gitignore"
+  ]) {
+    cpSync(new URL(entry, repoRoot), join(agentsDir, entry), { recursive: true });
+  }
+  symlinkSync(new URL("node_modules", repoRoot), join(agentsDir, "node_modules"), "dir");
+}
 
 const expectedMenuDescriptors = [
   {
@@ -562,6 +595,115 @@ test("parseArgs supports --non-interactive flag", () => {
     nonInteractive: true,
     command: "menu"
   });
+});
+
+test("augment-context-engine feature resolution defaults false and preserves previous metadata", () => {
+  assert.equal(resolveAugmentContextEngineFeature({}, {}), false);
+  assert.equal(resolveAugmentContextEngineFeature({ augmentContextEngine: true }, {}), true);
+  assert.equal(resolveAugmentContextEngineFeature({ augmentContextEngine: false }, {
+    features: { augmentContextEngine: true }
+  }), false);
+  assert.equal(resolveAugmentContextEngineFeature({}, {
+    features: { augmentContextEngine: true }
+  }), true);
+  assert.equal(resolveAugmentContextEngineFeature({}, {
+    features: { augmentContextEngine: false }
+  }), false);
+});
+
+test("full init augment-context-engine prompt defaults to disabled", () => {
+  assert.deepEqual(getAugmentContextEnginePromptOptions(), {
+    message: "是否启用 augment-context-engine MCP 代码检索支持？不确定建议选否，可减少 MCP 安装和配置麻烦。",
+    initialValue: false
+  });
+});
+
+test("renderManagedWorkflowContent renders enabled and lite retrieval policies", () => {
+  const agentsTemplate = readFileSync(new URL("AGENTS.md", repoRoot), "utf8");
+  const enabledAgents = renderManagedWorkflowContent(agentsTemplate, { augmentContextEngine: true });
+  const liteAgents = renderManagedWorkflowContent(agentsTemplate, { augmentContextEngine: false });
+
+  assert.match(enabledAgents, /mcp__augment-context-engine__codebase-retrieval/u);
+  assert.doesNotMatch(enabledAgents, /CODEBASE_RETRIEVAL_POLICY/u);
+  assert.match(liteAgents, /Use local codebase retrieval with `rg`, `rg --files`, `git grep`, and direct file reads/u);
+  assert.doesNotMatch(liteAgents, /mcp__augment-context-engine__codebase-retrieval/u);
+  assert.doesNotMatch(liteAgents, /CODEBASE_RETRIEVAL_POLICY/u);
+});
+
+test("renderManagedWorkflowContent removes mandatory augment MCP wording from lite commands", () => {
+  const commandNames = ["abel-init.md", "abel-research.md", "abel-plan.md", "abel-diagnose.md"];
+  for (const commandName of commandNames) {
+    const template = readFileSync(new URL(`commands/${commandName}`, repoRoot), "utf8");
+    const content = renderManagedWorkflowContent(template, { augmentContextEngine: false });
+    assert.doesNotMatch(content, /mcp__augment-context-engine__codebase-retrieval/u, commandName);
+    assert.doesNotMatch(content, /Mandatory use of `mcp__augment-context-engine__codebase-retrieval`/u, commandName);
+    assert.doesNotMatch(content, /\{\{[A-Z_]+\}\}/u, commandName);
+  }
+});
+
+test("source-clone install renders workflow templates in place before linking", () => {
+  const homeDir = mkdtempAgentsHome();
+  const agentsDir = join(homeDir, ".agents");
+  try {
+    copySourceInstallFixture(agentsDir);
+    const result = spawnSync(process.execPath, ["bin/abelworkflow.mjs", "install"], {
+      cwd: agentsDir,
+      env: {
+        ...process.env,
+        HOME: homeDir,
+        USERPROFILE: homeDir,
+        NO_COLOR: "1"
+      },
+      encoding: "utf8"
+    });
+
+    assert.equal(result.status, 0, result.stderr || result.stdout);
+    const agentsContent = readFileSync(join(agentsDir, "AGENTS.md"), "utf8");
+    const researchContent = readFileSync(join(agentsDir, "commands", "abel-research.md"), "utf8");
+    const linkedAgentsContent = readFileSync(join(homeDir, ".codex", "AGENTS.md"), "utf8");
+
+    assert.match(agentsContent, /Use local codebase retrieval with `rg`, `rg --files`, `git grep`, and direct file reads/u);
+    assert.doesNotMatch(agentsContent, /\{\{[A-Z_]+\}\}/u);
+    assert.doesNotMatch(researchContent, /\{\{[A-Z_]+\}\}/u);
+    assert.doesNotMatch(linkedAgentsContent, /\{\{[A-Z_]+\}\}/u);
+  } finally {
+    rmSync(homeDir, { recursive: true, force: true });
+  }
+});
+
+test("Claude default permissions include augment MCP only when feature is enabled", () => {
+  const enabledSettings = buildDefaultClaudeSettings({ augmentContextEngine: true });
+  const liteSettings = buildDefaultClaudeSettings({ augmentContextEngine: false });
+
+  assert.ok(enabledSettings.permissions.allow.includes("mcp__augment-context-engine"));
+  assert.ok(!liteSettings.permissions.allow.includes("mcp__augment-context-engine"));
+
+  assert.ok(mergeClaudeSettingsWithDefaults({}, { augmentContextEngine: true })
+    .permissions.allow.includes("mcp__augment-context-engine"));
+  assert.ok(!mergeClaudeSettingsWithDefaults({}, { augmentContextEngine: false })
+    .permissions.allow.includes("mcp__augment-context-engine"));
+});
+
+test("applyClaudePermissionFeature only removes augment MCP permission when previously managed", () => {
+  const userManaged = applyClaudePermissionFeature({
+    permissions: { allow: ["Read", "mcp__augment-context-engine"], deny: [] }
+  }, {
+    augmentContextEngine: false,
+    previousManagedPermissions: []
+  });
+  assert.deepEqual(userManaged.settings.permissions.allow, ["Read", "mcp__augment-context-engine"]);
+  assert.deepEqual(userManaged.managedPermissions, []);
+  assert.equal(userManaged.changed, false);
+
+  const abelManaged = applyClaudePermissionFeature({
+    permissions: { allow: ["Read", "mcp__augment-context-engine"], deny: [] }
+  }, {
+    augmentContextEngine: false,
+    previousManagedPermissions: ["mcp__augment-context-engine"]
+  });
+  assert.deepEqual(abelManaged.settings.permissions.allow, ["Read"]);
+  assert.deepEqual(abelManaged.managedPermissions, []);
+  assert.equal(abelManaged.changed, true);
 });
 
 test("parseArgs auto-enables nonInteractive when CI environment is set", { concurrency: false }, () => {

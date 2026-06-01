@@ -39,8 +39,8 @@ argument-hint: [change_name]
 
 4. **Uncertainty Elimination Audit**: Invoke skills to detect and eliminate remaining ambiguities:
    ```
-   # First, use augment-context-engine to validate against existing codebase patterns
-   mcp__augment-context-engine__codebase-retrieval: "Search for existing implementations similar to change <change_name>. Keywords: [key concepts from proposal]"
+   # First, validate against existing codebase patterns
+   {{CODEBASE_RETRIEVAL_PATTERN_AUDIT}}
    # Then audit for ambiguities directly and list them explicitly
    Review change <change_name> for decision points that remain unspecified. For each: [AMBIGUITY] <description> → [REQUIRED CONSTRAINT] <what must be specified>.
    Identify implicit assumptions in change <change_name>. For each: [ASSUMPTION] <description> → [EXPLICIT CONSTRAINT NEEDED] <concrete specification>.

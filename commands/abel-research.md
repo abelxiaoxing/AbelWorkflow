@@ -38,7 +38,7 @@ Produce constraint sets that narrow the solution space, plus measurable success 
 ---
 
 ## Phase 2 — Initial Codebase Assessment (Read‑Only)
-- Use `mcp__augment-context-engine__codebase-retrieval` as the primary way to locate relevant code; avoid grep/find unless unavoidable.
+- {{CODEBASE_RETRIEVAL_POLICY}}
 - If technical research needed (architectural patterns, best practices), invoke `/grok-search` skill
 - If the codebase spans multiple modules/directories, dispatch parallel explore subagents by context boundary.
 
@@ -73,7 +73,7 @@ All explore subagents MUST return valid JSON using this schema:
 ## Phase 5 — Parallel Subagent Dispatch
 - Monitor subagent execution and collect structured reports.
 - For each boundary, spawn an Explore subagent with:
-  - Mandatory use of `mcp__augment-context-engine__codebase-retrieval`
+  - {{CODEBASE_RETRIEVAL_MANDATORY_RULE}}
   - Clear scope
   - self-contained with independent output
   - Required output template (from Phase 4)
@@ -113,7 +113,7 @@ All explore subagents MUST return valid JSON using this schema:
 
 ## Reference
 - Review existing constraints: `rg -n "Constraint:|MUST|MUST NOT" openspec/specs`
-- Inspect codebase structure: `ls -R` or `mcp__augment-context-engine__codebase-retrieval` with `file list --recursive`
+- {{CODEBASE_RETRIEVAL_STRUCTURE_REFERENCE}}
 
 - Check prior research outputs: `ls openspec/changes/*/`
 - OpenSpec CLI commands:
