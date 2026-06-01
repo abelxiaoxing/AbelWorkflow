@@ -178,15 +178,15 @@ node .\bin\abelworkflow.mjs install
 |---|---|---|---|
 | `AGENTS.md` | `~/.claude/CLAUDE.md` | `~/.codex/AGENTS.md` | 全局系统提示词/规则 |
 | `skills/<skill>/` | `~/.claude/skills/<skill>/` | `~/.codex/skills/<skill>/` | Skills（每个目录一个技能） |
-| `commands/oc/` | `~/.claude/commands/oc/` | `~/.codex/prompts/*.md` | Claude 读 `commands/`；Codex 读 `prompts/` |
+| `commands/abel-*.md` | `~/.claude/commands/abel-*.md` | `~/.codex/prompts/abel-*.md` | 扁平化部署，避免命名冲突 |
 
 ### 验证（可选）
 
 **Linux/macOS（bash/zsh）**
 
 ```bash
-ls -la "$HOME/.claude/CLAUDE.md" "$HOME/.claude/commands/oc"
-ls -la "$HOME/.codex/AGENTS.md" "$HOME/.codex/prompts/"{init,research,plan,implementation,diagnose}.md
+ls -la "$HOME/.claude/CLAUDE.md" "$HOME/.claude/commands/"abel-*.md
+ls -la "$HOME/.codex/AGENTS.md" "$HOME/.codex/prompts/"abel-*.md
 cat "$HOME/.claude/settings.json" | head
 cat "$HOME/.codex/config.toml" | head
 ```
@@ -194,9 +194,9 @@ cat "$HOME/.codex/config.toml" | head
 **Windows（PowerShell）**
 
 ```powershell
-Get-Item "$HOME\.claude\CLAUDE.md", "$HOME\.claude\commands\oc"
+Get-Item "$HOME\.claude\CLAUDE.md"; Get-ChildItem "$HOME\.claude\commands\abel-*.md"
 Get-Item "$HOME\.codex\AGENTS.md"
-Get-ChildItem "$HOME\.codex\prompts" | Where-Object { $_.Name -in @("init.md", "research.md", "plan.md", "implementation.md", "diagnose.md") }
+Get-ChildItem "$HOME\.codex\prompts\abel-*.md"
 Get-Content "$HOME\.claude\settings.json" -TotalCount 10
 Get-Content "$HOME\.codex\config.toml" -TotalCount 10
 ```

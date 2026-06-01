@@ -20,8 +20,8 @@
 ## Workflow
 
 ```
-/oc:init → /oc:research → /oc:plan → /oc:implementation(TDD)
-                                   ↘ /oc:diagnose (bug fix)
+/abel-init → /abel-research → /abel-plan → /abel-implement(TDD)
+                                      ↘ /abel-diagnose (bug fix)
 ```
 
 ## Universal Constraints

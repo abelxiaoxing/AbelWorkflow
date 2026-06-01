@@ -1,12 +1,12 @@
 ---
-name: OC:Implementation
+name: abel-implement
 description: Implement approved changes with mandatory TDD.
-category: OC
-tags: [openspec, implementation, TDD]
+category: abel
+tags: [abel, implementation, TDD]
 argument-hint: [change_name]
 ---
 
-<!-- OC:START -->
+<!-- ABEL:START -->
 **Arguments**
 - Requested: `<change_name>`
 
@@ -154,4 +154,4 @@ Frontend Review
 
 ✓ Implementation complete
 ```
-<!-- OC:END -->
+<!-- ABEL:END -->

@@ -118,7 +118,11 @@ AbelWorkflow Setup
 ```
 Linked targets:
 - = /home/user/.claude/CLAUDE.md
-- + /home/user/.claude/commands/oc
+- + /home/user/.claude/commands/abel-init.md
+- + /home/user/.claude/commands/abel-plan.md
+- + /home/user/.claude/commands/abel-research.md
+- + /home/user/.claude/commands/abel-implement.md
+- + /home/user/.claude/commands/abel-diagnose.md
 ...
 ```
 
@@ -129,7 +133,7 @@ Linked targets:
 │
 ┌  链接结果
 │  ✓  ~/.claude/CLAUDE.md          已链接
-│  ✓  ~/.claude/commands/oc        已链接
+│  ✓  ~/.claude/commands/abel-*.md  已链接
 │  ✓  ~/.claude/skills/confidence-check  已链接
 │  ⤵  ~/.codex/config.toml         已备份 → config.toml.bak.171439...0
 └

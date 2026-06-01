@@ -1,13 +1,13 @@
 ---
-name: OC:Research
+name: abel-research
 description: Transform user requirements into constraint sets via structured exploration (NO implementation)
-category: OC
-tags: [OC, research, constraints, exploration, subagents]
+category: abel
+tags: [abel, research, constraints, exploration, subagents]
 ---
 
-<!-- OC:RESEARCH:START -->
+<!-- ABEL:RESEARCH:START -->
 
-# OC:Research — Operating Mode (Constraints & Specs Only)
+# abel-research — Operating Mode (Constraints & Specs Only)
 
 ## Non‑Negotiable Rules (Highest Priority)
 1. RESEARCH MODE ONLY.
@@ -123,4 +123,4 @@ All explore subagents MUST return valid JSON using this schema:
   - `openspec instructions proposal --change <name>` - Get proposal instructions
 - Validate subagent outputs conform to template before aggregation.
 - Ask the user directly for ANY ambiguity—do not assume or guess.
-<!-- OC:RESEARCH:END -->
+<!-- ABEL:RESEARCH:END -->

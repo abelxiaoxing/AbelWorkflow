@@ -1,11 +1,11 @@
 ---
-name: OC:Diagnose
+name: abel-diagnose
 description: Parallel diagnosis with batch fix reporting via systematic root cause analysis.
-category: OC
-tags: [diagnosis, bugfix]
+category: abel
+tags: [abel, diagnosis, bugfix]
 argument-hint: <problem-description>
 ---
-<!-- OC:START -->
+<!-- ABEL:START -->
 **Arguments**
 - Required: `<problem-description>` (one or more bug descriptions; comma-separated supported)
 
@@ -60,4 +60,4 @@ Total: {n} | ReadyToFix: {n_ready} | Blocked: {n_blocked}
 ### Final Status
 {FIXED|PARTIAL|NEEDS_REVIEW|BLOCKED}
 ```
-<!-- OC:END -->
+<!-- ABEL:END -->

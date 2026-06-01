@@ -1,11 +1,11 @@
 ---
-name: OC:Plan
+name: abel-plan
 description: Refine approved change into a zero-decision executable plan.
-category: OC
-tags: [OC, plan, PBT]
+category: abel
+tags: [abel, plan, PBT]
 argument-hint: [change_name]
 ---
-<!-- OC:START -->
+<!-- ABEL:START -->
 **Guardrails**
 - Strictly adhere to **OpenSpec** rules when writing **standardized spec-structured projects**.
 - The goal of this phase is to eliminate ALL decision points from the task flow—implementation should be pure mechanical execution.
@@ -85,4 +85,4 @@ A proposal is ready to exit the Plan phase only when:
 - [ ] All PBT properties documented with falsification strategies
 - [ ] `openspec validate <change_name> --strict` returns zero issues
 - [ ] User has explicitly approved all constraint decisions
-<!-- OC:END -->
+<!-- ABEL:END -->

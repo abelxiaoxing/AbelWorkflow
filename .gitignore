@@ -7,6 +7,8 @@
 */tmp/
 skills/dev-browser/profiles/
 skills/dev-browser/tmp/
+skills/dev-browser/.cache/
+*cache*/
 */dist/
 */build/
 .claude/

@@ -1,11 +1,11 @@
 ---
-name: OC:Init
+name: abel-init
 description: Initialize OpenSpec environment and validate required tooling.
-category: OC
+category: abel
 tags: [openspec, init, setup]
 ---
 
-<!-- OC:START -->
+<!-- ABEL:START -->
 **Guardrails**
 - Complete steps in order; stop on failure
 - Preserve existing config; do not overwrite without confirmation
@@ -24,4 +24,4 @@ tags: [openspec, init, setup]
    - Project initialization
    - MCP availability
    - Required skills availability
-<!-- OC:END -->
+<!-- ABEL:END -->
