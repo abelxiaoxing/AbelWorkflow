@@ -10,7 +10,7 @@ Do NOT dispatch when the task touches global configs, shared utilities,
 public interfaces used across modules, or project scaffolding.
 """
 nickname_candidates    = ["Forge", "Patch", "Builder"]
-model                  = "gpt-5.4"
+model                  = "gpt-5.5"
 model_reasoning_effort = "high"
 sandbox_mode           = "workspace-write"
 

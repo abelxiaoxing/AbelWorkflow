@@ -14,7 +14,7 @@ exceed execution value.
 Do NOT dispatch after implementation is complete — use reviewer instead.
 """
 nickname_candidates    = ["Blueprint", "Compass", "Architect"]
-model                  = "gpt-5.4"
+model                  = "gpt-5.5"
 model_reasoning_effort = "high"
 sandbox_mode           = "read-only"
 

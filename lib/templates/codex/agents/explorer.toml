@@ -11,7 +11,7 @@ Do NOT dispatch for review after implementation — use reviewer instead.
 Do NOT dispatch if the affected files are already known and confirmed.
 """
 nickname_candidates    = ["Atlas", "Trace", "Scout"]
-model                  = "gpt-5.4"
+model                  = "gpt-5.5"
 model_reasoning_effort = "high"
 sandbox_mode           = "read-only"
 
