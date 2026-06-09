@@ -374,7 +374,7 @@ test("getRunCommandSpawnOptions default preserves ABELWORKFLOW_TEST_PLATFORM ove
   }
 });
 
-test("mergeCodexAuthData preserves unrelated keys while replacing env key and removing legacy keys", () => {
+test("mergeCodexAuthData rebuilds auth data with only the configured env key", () => {
   const authCases = [
     {
       auth: {},
@@ -393,23 +393,22 @@ test("mergeCodexAuthData preserves unrelated keys while replacing env key and re
       envKey: "OPENAI_API_KEY",
       apiKey: "new-secret",
       legacyEnvKeys: ["LEGACY_ONE", "LEGACY_TWO"],
-      expected: {
-        OPENAI_API_KEY: "new-secret",
-        OPENAI_BASE_URL: "https://example.com/v1"
-      }
+      expected: { OPENAI_API_KEY: "new-secret" }
     },
     {
       auth: {
         CUSTOM_KEY: "keep-me",
-        OPENAI_API_KEY: "old-secret"
+        OPENAI_API_KEY: "old-secret",
+        tokens: {
+          id_token: "gpt-login-token",
+          refresh_token: "gpt-refresh-token"
+        },
+        last_refresh: 123
       },
       envKey: "OPENAI_API_KEY",
       apiKey: "fresh-secret",
       legacyEnvKeys: ["OPENAI_API_KEY", "UNUSED_LEGACY"],
-      expected: {
-        CUSTOM_KEY: "keep-me",
-        OPENAI_API_KEY: "fresh-secret"
-      }
+      expected: { OPENAI_API_KEY: "fresh-secret" }
     }
   ];
 
