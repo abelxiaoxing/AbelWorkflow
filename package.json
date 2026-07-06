@@ -17,6 +17,7 @@
     "README.md",
     "commands",
     "skills",
+    "extensions",
     ".skill-lock.json",
     ".gitignore"
   ],

@@ -21,13 +21,18 @@ import {
 import {
   applyClaudePermissionFeature,
   buildDefaultClaudeSettings,
+  buildPiModelsConfig,
+  buildPiSettingsConfig,
   hasPromptEnhancerApiConfig,
   getAugmentContextEnginePromptOptions,
   mergeCodexAuthData,
   mergeClaudeSettingsWithDefaults,
   renderManagedWorkflowContent,
   resolveAugmentContextEngineFeature,
-  resolvePromptEnhancerMode
+  resolveExistingPiApiConfig,
+  resolvePromptEnhancerMode,
+  parsePiModelIds,
+  stripJsonComments
 } from "../lib/cli.mjs";
 
 const defaultAgentsDir = "/home/test/.agents";
@@ -45,6 +50,7 @@ function copySourceInstallFixture(agentsDir) {
     "lib",
     "commands",
     "skills",
+    "extensions",
     "AGENTS.md",
     "README.md",
     "package.json",
@@ -107,6 +113,18 @@ const expectedMenuDescriptors = [
   {
     value: "codex-api",
     label: "配置 Codex API",
+    hint: "CLI",
+    group: "cli"
+  },
+  {
+    value: "pi-install",
+    label: "安装/更新 Pi",
+    hint: "CLI",
+    group: "cli"
+  },
+  {
+    value: "pi-api",
+    label: "配置 Pi API",
     hint: "CLI",
     group: "cli"
   },
@@ -372,6 +390,132 @@ test("getRunCommandSpawnOptions default preserves ABELWORKFLOW_TEST_PLATFORM ove
     }
     process.env.ABELWORKFLOW_TEST_PLATFORM = previousPlatform;
   }
+});
+
+test("parsePiModelIds normalizes comma and newline separated model ids", () => {
+  assert.deepEqual(parsePiModelIds(" gpt-5.5,\ngpt-5.3-codex-spark,,gpt-5.5 "), [
+    "gpt-5.5",
+    "gpt-5.3-codex-spark"
+  ]);
+  assert.deepEqual(parsePiModelIds(""), []);
+});
+
+test("stripJsonComments preserves string URLs and removes line comments", () => {
+  const parsed = JSON.parse(stripJsonComments(`{
+    "baseUrl": "https://example.com/v1", // keep URL
+    "apiKey": "sk//literal"
+  }`));
+  assert.deepEqual(parsed, {
+    baseUrl: "https://example.com/v1",
+    apiKey: "sk//literal"
+  });
+});
+
+test("stripJsonComments removes JSONC trailing commas outside strings", () => {
+  const parsed = JSON.parse(stripJsonComments(`{
+    "providers": {
+      "gpt": {
+        "baseUrl": "https://example.com/a,b",
+        "models": [
+          { "id": "gpt-5.5", }, // Pi JSONC allows this
+        ],
+      },
+    },
+  }`));
+  assert.deepEqual(parsed, {
+    providers: {
+      gpt: {
+        baseUrl: "https://example.com/a,b",
+        models: [{ id: "gpt-5.5" }]
+      }
+    }
+  });
+});
+
+test("Pi gpt config builder preserves existing model overrides and settings defaults", () => {
+  const existing = {
+    providers: {
+      other: { baseUrl: "https://other.example/v1" },
+      gpt: {
+        baseUrl: "https://old.example/v1",
+        api: "openai-responses",
+        apiKey: "old-key",
+        compat: { supportsUsageInStreaming: false },
+        models: [
+          {
+            id: "gpt-5.5",
+            name: "GPT Custom",
+            reasoning: false,
+            input: ["text"],
+            contextWindow: 1000,
+            maxTokens: 2000,
+            compat: { maxTokensField: "max_tokens" }
+          }
+        ]
+      }
+    }
+  };
+
+  const nextModels = buildPiModelsConfig(existing, {
+    baseUrl: "https://new.example/v1",
+    api: "openai-responses",
+    apiKey: "new-key",
+    modelIds: ["gpt-5.5", "gpt-new"]
+  });
+
+  assert.equal(nextModels.providers.other.baseUrl, "https://other.example/v1");
+  assert.equal(nextModels.providers.gpt.baseUrl, "https://new.example/v1");
+  assert.equal(nextModels.providers.gpt.apiKey, "new-key");
+  assert.equal(nextModels.providers.gpt.compat.supportsUsageInStreaming, false);
+  assert.equal(nextModels.providers.gpt.compat.supportsDeveloperRole, false);
+  assert.deepEqual(nextModels.providers.gpt.models[0], {
+    id: "gpt-5.5",
+    name: "GPT Custom",
+    reasoning: false,
+    input: ["text"],
+    contextWindow: 1000,
+    maxTokens: 2000,
+    compat: { maxTokensField: "max_tokens" }
+  });
+  assert.deepEqual(nextModels.providers.gpt.models[1], {
+    id: "gpt-new",
+    name: "gpt-new",
+    reasoning: true,
+    input: ["text", "image"],
+    contextWindow: 262144,
+    maxTokens: 64000
+  });
+
+  assert.deepEqual(buildPiSettingsConfig({}, "gpt-5.5"), {
+    defaultProvider: "gpt",
+    defaultModel: "gpt-5.5",
+    defaultThinkingLevel: "high",
+    enableSkillCommands: true
+  });
+});
+
+test("resolveExistingPiApiConfig reads gpt provider and default model", () => {
+  const config = resolveExistingPiApiConfig({
+    providers: {
+      gpt: {
+        baseUrl: "https://example.com/v1",
+        api: "openai-completions",
+        apiKey: "secret",
+        models: [{ id: "gpt-a" }, { id: "gpt-b" }]
+      }
+    }
+  }, {
+    defaultProvider: "gpt",
+    defaultModel: "gpt-b"
+  });
+
+  assert.deepEqual(config, {
+    baseUrl: "https://example.com/v1",
+    api: "openai-completions",
+    apiKey: "secret",
+    modelIds: ["gpt-a", "gpt-b"],
+    defaultModel: "gpt-b"
+  });
 });
 
 test("mergeCodexAuthData rebuilds auth data with only the configured env key", () => {
@@ -640,6 +784,32 @@ test("renderManagedWorkflowContent removes mandatory augment MCP wording from li
   }
 });
 
+test("package-root install copies Pi extensions into agents dir and links them", () => {
+  const homeDir = mkdtempAgentsHome();
+  try {
+    const result = spawnSync(process.execPath, ["bin/abelworkflow.mjs", "install"], {
+      cwd: new URL("../", import.meta.url),
+      env: {
+        ...process.env,
+        HOME: homeDir,
+        USERPROFILE: homeDir,
+        NO_COLOR: "1"
+      },
+      encoding: "utf8"
+    });
+
+    assert.equal(result.status, 0, result.stderr || result.stdout);
+    assert.match(result.stdout, /\.pi\/agent\/AGENTS\.md/u);
+    const managedExtension = readFileSync(join(homeDir, ".agents", "extensions", "pi-gpt-responses-compat.ts"), "utf8");
+    const linkedExtension = readFileSync(join(homeDir, ".pi", "agent", "extensions", "pi-gpt-responses-compat.ts"), "utf8");
+
+    assert.match(managedExtension, /before_provider_request/u);
+    assert.match(linkedExtension, /before_provider_request/u);
+  } finally {
+    rmSync(homeDir, { recursive: true, force: true });
+  }
+});
+
 test("source-clone install renders workflow templates in place before linking", () => {
   const homeDir = mkdtempAgentsHome();
   const agentsDir = join(homeDir, ".agents");
@@ -660,11 +830,13 @@ test("source-clone install renders workflow templates in place before linking", 
     const agentsContent = readFileSync(join(agentsDir, "AGENTS.md"), "utf8");
     const researchContent = readFileSync(join(agentsDir, "commands", "abel-research.md"), "utf8");
     const linkedAgentsContent = readFileSync(join(homeDir, ".codex", "AGENTS.md"), "utf8");
+    const piExtensionContent = readFileSync(join(homeDir, ".pi", "agent", "extensions", "pi-gpt-responses-compat.ts"), "utf8");
 
     assert.match(agentsContent, /Use local codebase retrieval with `rg`, `rg --files`, `git grep`, and direct file reads/u);
     assert.doesNotMatch(agentsContent, /\{\{[A-Z_]+\}\}/u);
     assert.doesNotMatch(researchContent, /\{\{[A-Z_]+\}\}/u);
     assert.doesNotMatch(linkedAgentsContent, /\{\{[A-Z_]+\}\}/u);
+    assert.match(piExtensionContent, /before_provider_request/u);
   } finally {
     rmSync(homeDir, { recursive: true, force: true });
   }

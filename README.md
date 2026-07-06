@@ -1,6 +1,6 @@
 # AbelWorkflow
 
-Codex、OpenCode、Claude Code 的 Skills 和 Commands 配置仓库。
+Codex、OpenCode、Claude Code、Pi 的 Skills、Commands/Prompts 和扩展配置仓库。
 
 ## 目录结构
 
@@ -17,6 +17,7 @@ Codex、OpenCode、Claude Code 的 Skills 和 Commands 配置仓库。
 │   └── prompt-enhancer/     # 提示词优化器
 ├── commands/           # 命令目录
 │   └── oc/                # 工作流命令
+├── extensions/         # Pi 扩展
 ├── AGENTS.md         # Agent 全局系统 prompts
 └── README.md
 ```
@@ -76,11 +77,12 @@ npx abelworkflow@latest
 > 说明：
 > - npm 发布包名必须使用小写，所以实际可执行命令是 `npx abelworkflow`。
 > - 交互式模式下，默认会打开初始化菜单，支持：
->   - 同步 `~/.agents` 并自动重建 `~/.claude` / `~/.codex` 链接
+>   - 同步 `~/.agents` 并自动重建 `~/.claude` / `~/.codex` / `~/.pi/agent` 链接
 >   - 交互式填写 `grok-search`、`context7-auto-research`、`prompt-enhancer` 的 `.env`
->   - 一键安装或更新 `Claude Code`、`Codex`
+>   - 一键安装或更新 `Claude Code`、`Codex`、`Pi`
 >   - 配置 `Claude Code` 的第三方 API 到 `~/.claude/settings.json`
 >   - 配置 `Codex` 的第三方 API 到 `~/.codex/config.toml` 和 `~/.codex/auth.json`
+>   - 配置 `Pi` 的自定义 API 到 `~/.pi/agent/models.json` 中的 `gpt` provider，并设置 `~/.pi/agent/settings.json` 默认模型，同时携带 Pi 扩展
 > - 非交互场景请显式使用 `npx abelworkflow install`，不再保留旧的默认自动同步逻辑。
 
 ### 交互式初始化能力
@@ -97,12 +99,14 @@ npx abelworkflow --help
 其中完整初始化会按需引导你完成：
 
 1. 安装 AbelWorkflow 到 `~/.agents`
-2. 自动链接到 `~/.claude/` 和 `~/.codex/`
+2. 自动链接到 `~/.claude/`、`~/.codex/` 和 `~/.pi/agent/`
 3. 可选安装 `Claude Code` CLI
 4. 可选配置 `Claude Code` 第三方 API
 5. 可选安装 `Codex` CLI
 6. 可选配置 `Codex` 第三方 API
-7. 可选填写三个技能的环境变量
+7. 可选安装 `Pi` CLI
+8. 可选配置 Pi `gpt` provider 自定义 API，并链接 Pi 扩展
+9. 可选填写三个技能的环境变量
 
 ### 技能环境写入位置
 
@@ -174,11 +178,12 @@ node .\bin\abelworkflow.mjs install
 
 ### 映射关系（本仓库 → 配置目录）
 
-| 本仓库 | Claude Code | Codex | 说明 |
-|---|---|---|---|
-| `AGENTS.md` | `~/.claude/CLAUDE.md` | `~/.codex/AGENTS.md` | 全局系统提示词/规则 |
-| `skills/<skill>/` | `~/.claude/skills/<skill>/` | `~/.codex/skills/<skill>/` | Skills（每个目录一个技能） |
-| `commands/abel-*.md` | `~/.claude/commands/abel-*.md` | `~/.codex/prompts/abel-*.md` | 扁平化部署，避免命名冲突 |
+| 本仓库 | Claude Code | Codex | Pi | 说明 |
+|---|---|---|---|---|
+| `AGENTS.md` | `~/.claude/CLAUDE.md` | `~/.codex/AGENTS.md` | `~/.pi/agent/AGENTS.md` | 全局系统提示词/规则 |
+| `skills/<skill>/` | `~/.claude/skills/<skill>/` | `~/.codex/skills/<skill>/` | `~/.pi/agent/skills/<skill>/` | Skills（每个目录一个技能） |
+| `commands/abel-*.md` | `~/.claude/commands/abel-*.md` | `~/.codex/prompts/abel-*.md` | `~/.pi/agent/prompts/abel-*.md` | 扁平化部署，避免命名冲突 |
+| `extensions/*.ts` | - | - | `~/.pi/agent/extensions/*.ts` | Pi 扩展 |
 
 ### 验证（可选）
 
