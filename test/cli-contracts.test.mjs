@@ -7,6 +7,7 @@ import { join } from "node:path";
 import {
   assertInteractiveMenuSupported,
   assertNotCancelled,
+  buildCliToolMenuDescriptors,
   CancelledError,
   confirmOrCancel,
   getRunCommandSpawnOptions,
@@ -93,38 +94,20 @@ const expectedMenuDescriptors = [
     group: "skill"
   },
   {
-    value: "claude-install",
-    label: "安装/更新 Claude Code",
+    value: "pi-cli",
+    label: "安装/配置 Pi",
     hint: "CLI",
     group: "cli"
   },
   {
-    value: "claude-api",
-    label: "配置 Claude API",
+    value: "codex-cli",
+    label: "安装/配置 Codex",
     hint: "CLI",
     group: "cli"
   },
   {
-    value: "codex-install",
-    label: "安装/更新 Codex",
-    hint: "CLI",
-    group: "cli"
-  },
-  {
-    value: "codex-api",
-    label: "配置 Codex API",
-    hint: "CLI",
-    group: "cli"
-  },
-  {
-    value: "pi-install",
-    label: "安装/更新 Pi",
-    hint: "CLI",
-    group: "cli"
-  },
-  {
-    value: "pi-api",
-    label: "配置 Pi API",
+    value: "claude-cli",
+    label: "安装/配置 Claude Code",
     hint: "CLI",
     group: "cli"
   },
@@ -362,6 +345,37 @@ test("interactive menu descriptors keep order, uniqueness, default membership, a
     return choice;
   });
   assert.deepEqual(displayChoices, expectedMenuDescriptors);
+});
+
+test("interactive menu CLI group exposes only aggregate entries in required order", () => {
+  assert.deepEqual(
+    interactiveMenuDescriptors
+      .filter((descriptor) => descriptor.group === "cli")
+      .map(({ value, label }) => ({ value, label })),
+    [
+      { value: "pi-cli", label: "安装/配置 Pi" },
+      { value: "codex-cli", label: "安装/配置 Codex" },
+      { value: "claude-cli", label: "安装/配置 Claude Code" }
+    ]
+  );
+});
+
+test("CLI tool submenus include install, API config, and back actions", () => {
+  assert.deepEqual(buildCliToolMenuDescriptors("pi"), [
+    { value: "pi-install", label: "安装/更新 Pi" },
+    { value: "pi-api", label: "配置 Pi API" },
+    { value: "back", label: "返回上一级" }
+  ]);
+  assert.deepEqual(buildCliToolMenuDescriptors("codex"), [
+    { value: "codex-install", label: "安装/更新 Codex" },
+    { value: "codex-api", label: "配置 Codex API" },
+    { value: "back", label: "返回上一级" }
+  ]);
+  assert.deepEqual(buildCliToolMenuDescriptors("claude"), [
+    { value: "claude-install", label: "安装/更新 Claude Code" },
+    { value: "claude-api", label: "配置 Claude Code API" },
+    { value: "back", label: "返回上一级" }
+  ]);
 });
 
 test("getRunCommandSpawnOptions preserves platform contracts", () => {
