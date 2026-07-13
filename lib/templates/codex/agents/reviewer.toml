@@ -11,7 +11,7 @@ Do NOT dispatch for codebase mapping or exploration — use explorer instead.
 Do NOT dispatch before implementation is complete.
 """
 nickname_candidates    = ["Delta", "Echo", "Sigma"]
-model                  = "gpt-5.5"
+model                  = "gpt-5.6-sol"
 model_reasoning_effort = "xhigh"
 sandbox_mode           = "read-only"
 

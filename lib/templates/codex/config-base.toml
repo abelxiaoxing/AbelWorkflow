@@ -5,11 +5,9 @@ preferred_auth_method = "apikey"
 approvals_reviewer = "guardian_subagent"
 approval_policy = "on-request"
 sandbox_mode = "workspace-write"
-model = "gpt-5.5"
+model = "gpt-5.6-sol"
 model_reasoning_effort = "high"
 network_access = true
-supports_websockets = true
-requires_openai_auth = true
 developer_instructions = """
 Act as the default orchestrator for specialized subagents.
 
@@ -95,5 +93,4 @@ job_max_runtime_seconds = 2400
 multi_agent = true
 js_repl = true
 guardian_approval = true
-responses_websockets_v2 = true
 shell_snapshot = true
