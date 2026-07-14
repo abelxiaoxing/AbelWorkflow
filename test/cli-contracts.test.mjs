@@ -1,7 +1,7 @@
 import { spawnSync } from "node:child_process";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync } from "node:fs";
+import { cpSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -20,9 +20,11 @@ import {
   selectOrCancel
 } from "../lib/cli/logic.mjs";
 import {
+  applyClaudeInsecureTlsSetting,
   applyClaudePermissionFeature,
   buildCliToolInstallCommand,
   buildDefaultClaudeSettings,
+  buildPiAuthConfig,
   buildPiModelsConfig,
   buildPiSettingsConfig,
   chooseCliInstallPackageManager,
@@ -30,8 +32,11 @@ import {
   hasPromptEnhancerApiConfig,
   inferPackageManagerFromCommandPath,
   getAugmentContextEnginePromptOptions,
+  getPiApiPromptOptions,
+  inferPiApiFromBaseUrl,
   mergeCodexAuthData,
   mergeClaudeSettingsWithDefaults,
+  normalizeOpenAiBaseUrl,
   renderManagedWorkflowContent,
   resolveAugmentContextEngineFeature,
   resolveExistingPiApiConfig,
@@ -39,6 +44,7 @@ import {
   parsePiModelIds,
   stripJsonComments
 } from "../lib/cli.mjs";
+import { piInsecureTlsHeader } from "../extensions/pi-gpt-responses-compat/tls-fetch.mjs";
 
 const defaultAgentsDir = "/home/test/.agents";
 const resolvePath = (value) => `/resolved/${value.replace(/^\/+/, "")}`;
@@ -554,6 +560,76 @@ test("parsePiModelIds normalizes comma and newline separated model ids", () => {
   assert.deepEqual(parsePiModelIds(""), []);
 });
 
+test("normalizeOpenAiBaseUrl appends /v1 and keeps an existing /v1 stable", () => {
+  const cases = [
+    ["https://relay.example", "https://relay.example/v1"],
+    ["https://relay.example/", "https://relay.example/v1"],
+    ["https://relay.example/v1", "https://relay.example/v1"]
+  ];
+
+  for (const [value, expected] of cases) {
+    assert.equal(normalizeOpenAiBaseUrl(value), expected);
+  }
+});
+
+test("normalizeOpenAiBaseUrl reduces complete OpenAI endpoints to /v1", () => {
+  const cases = [
+    ["https://relay.example/v1/chat/completions", "https://relay.example/v1"],
+    ["https://relay.example/v1/chat/completions/", "https://relay.example/v1"],
+    [
+      "https://relay.example/v1/chat/completions?api-version=2026-01-01",
+      "https://relay.example/v1?api-version=2026-01-01"
+    ],
+    ["https://relay.example/v1/responses", "https://relay.example/v1"],
+    ["https://relay.example/v1/responses/", "https://relay.example/v1"],
+    [
+      "https://relay.example/v1/responses?api-version=2026-01-01",
+      "https://relay.example/v1?api-version=2026-01-01"
+    ]
+  ];
+
+  for (const [value, expected] of cases) {
+    assert.equal(normalizeOpenAiBaseUrl(value), expected);
+  }
+});
+
+test("inferPiApiFromBaseUrl recognizes complete endpoint paths", () => {
+  const cases = [
+    ["https://relay.example/v1/chat/completions", "openai-completions"],
+    ["https://relay.example/v1/chat/completions/?api-version=2026-01-01", "openai-completions"],
+    ["https://relay.example/v1/responses", "openai-responses"],
+    ["https://relay.example/v1/responses/?api-version=2026-01-01", "openai-responses"]
+  ];
+
+  for (const [value, expected] of cases) {
+    assert.equal(inferPiApiFromBaseUrl(value), expected);
+  }
+});
+
+test("inferPiApiFromBaseUrl ignores ordinary URLs and endpoint text in queries", () => {
+  const cases = [
+    "https://relay.example",
+    "https://relay.example/v1",
+    "https://relay.example/v1?endpoint=/v1/chat/completions",
+    "https://relay.example/v1?endpoint=/v1/responses"
+  ];
+
+  for (const value of cases) {
+    assert.equal(inferPiApiFromBaseUrl(value), null);
+  }
+});
+
+test("getPiApiPromptOptions recommends Chat Completions before Responses", () => {
+  assert.deepEqual(getPiApiPromptOptions(), [
+    { value: "openai-completions", label: "OpenAI Chat Completions（推荐）" },
+    { value: "openai-responses", label: "OpenAI Responses API" }
+  ]);
+  assert.equal(resolveExistingPiApiConfig().api, "openai-completions");
+  assert.equal(resolveExistingPiApiConfig({
+    providers: { gpt: { api: "openai-responses" } }
+  }).api, "openai-responses");
+});
+
 test("stripJsonComments preserves string URLs and removes line comments", () => {
   const parsed = JSON.parse(stripJsonComments(`{
     "baseUrl": "https://example.com/v1", // keep URL
@@ -646,6 +722,57 @@ test("Pi gpt config builder preserves existing model overrides and settings defa
     defaultThinkingLevel: "high",
     enableSkillCommands: true
   });
+});
+
+test("Pi auth config preserves provider environment settings", () => {
+  assert.deepEqual(buildPiAuthConfig({
+    other: { type: "api_key", key: "other-key" },
+    gpt: {
+      type: "api_key",
+      key: "old-key",
+      env: { HTTPS_PROXY: "http://127.0.0.1:7890" }
+    }
+  }, "new-key"), {
+    other: { type: "api_key", key: "other-key" },
+    gpt: {
+      type: "api_key",
+      key: "new-key",
+      env: {
+        HTTPS_PROXY: "http://127.0.0.1:7890"
+      }
+    }
+  });
+});
+
+test("Pi extension does not disable TLS verification for the process", () => {
+  const content = readFileSync(new URL("../extensions/pi-gpt-responses-compat/index.ts", import.meta.url), "utf8");
+  assert.doesNotMatch(content, /NODE_TLS_REJECT_UNAUTHORIZED/u);
+});
+
+test("Pi gpt config toggles only the managed insecure TLS request marker", () => {
+  const existing = {
+    providers: {
+      gpt: {
+        headers: {
+          "x-existing": "keep",
+          [piInsecureTlsHeader]: "https://old.example"
+        }
+      }
+    }
+  };
+  const options = {
+    baseUrl: "https://relay.example/v1",
+    api: "openai-responses",
+    apiKey: "secret",
+    modelIds: ["gpt-test"]
+  };
+
+  const strict = buildPiModelsConfig(existing, { ...options, insecureTls: false });
+  assert.deepEqual(strict.providers.gpt.headers, { "x-existing": "keep" });
+
+  const insecure = buildPiModelsConfig(existing, { ...options, insecureTls: true });
+  assert.equal(insecure.providers.gpt.headers[piInsecureTlsHeader], "https://relay.example");
+  assert.equal(insecure.providers.gpt.headers["x-existing"], "keep");
 });
 
 test("resolveExistingPiApiConfig reads gpt provider and default model", () => {
@@ -953,12 +1080,134 @@ test("package-root install copies Pi extensions into agents dir and links them",
     });
 
     assert.equal(result.status, 0, result.stderr || result.stdout);
-    assert.match(result.stdout, /\.pi\/agent\/AGENTS\.md/u);
-    const managedExtension = readFileSync(join(homeDir, ".agents", "extensions", "pi-gpt-responses-compat.ts"), "utf8");
-    const linkedExtension = readFileSync(join(homeDir, ".pi", "agent", "extensions", "pi-gpt-responses-compat.ts"), "utf8");
+    const managedExtension = readFileSync(join(homeDir, ".agents", "extensions", "pi-gpt-responses-compat", "index.ts"), "utf8");
+    const linkedExtension = readFileSync(join(homeDir, ".pi", "agent", "extensions", "pi-gpt-responses-compat", "index.ts"), "utf8");
+    const linkedTlsHelper = readFileSync(join(homeDir, ".pi", "agent", "extensions", "pi-gpt-responses-compat", "tls-fetch.mjs"), "utf8");
 
     assert.match(managedExtension, /before_provider_request/u);
     assert.match(linkedExtension, /before_provider_request/u);
+    assert.match(linkedTlsHelper, /createProviderTlsFetch/u);
+  } finally {
+    rmSync(homeDir, { recursive: true, force: true });
+  }
+});
+
+test("install migrates a legacy Pi prompts symlink without corrupting managed commands", () => {
+  const homeDir = mkdtempAgentsHome();
+  const agentsDir = join(homeDir, ".agents");
+  const commandsDir = join(agentsDir, "commands");
+  const piAgentDir = join(homeDir, ".pi", "agent");
+  const promptsDir = join(piAgentDir, "prompts");
+  const commandName = "abel-init.md";
+  const commandPath = join(commandsDir, commandName);
+  const sourceContent = readFileSync(new URL(`commands/${commandName}`, repoRoot), "utf8");
+
+  try {
+    mkdirSync(commandsDir, { recursive: true });
+    mkdirSync(piAgentDir, { recursive: true });
+    writeFileSync(commandPath, sourceContent, "utf8");
+    symlinkSync(commandsDir, promptsDir, "dir");
+
+    const result = spawnSync(process.execPath, ["bin/abelworkflow.mjs", "install"], {
+      cwd: new URL("../", import.meta.url),
+      env: {
+        ...process.env,
+        HOME: homeDir,
+        USERPROFILE: homeDir,
+        NO_COLOR: "1"
+      },
+      encoding: "utf8"
+    });
+
+    assert.equal(result.status, 0, result.stderr || result.stdout);
+    assert.ok(lstatSync(promptsDir).isDirectory());
+    assert.ok(lstatSync(commandPath).isFile());
+    assert.ok(lstatSync(join(promptsDir, commandName)).isSymbolicLink());
+    assert.equal(
+      readFileSync(commandPath, "utf8"),
+      renderManagedWorkflowContent(sourceContent, { augmentContextEngine: false })
+    );
+  } finally {
+    rmSync(homeDir, { recursive: true, force: true });
+  }
+});
+
+test("install repairs a self-referential managed command symlink", () => {
+  const homeDir = mkdtempAgentsHome();
+  const commandsDir = join(homeDir, ".agents", "commands");
+  const commandName = "abel-init.md";
+  const commandPath = join(commandsDir, commandName);
+  const sourceContent = readFileSync(new URL(`commands/${commandName}`, repoRoot), "utf8");
+
+  try {
+    mkdirSync(commandsDir, { recursive: true });
+    symlinkSync(commandPath, commandPath, "file");
+
+    const result = spawnSync(process.execPath, ["bin/abelworkflow.mjs", "install"], {
+      cwd: new URL("../", import.meta.url),
+      env: {
+        ...process.env,
+        HOME: homeDir,
+        USERPROFILE: homeDir,
+        NO_COLOR: "1"
+      },
+      encoding: "utf8"
+    });
+
+    assert.equal(result.status, 0, result.stderr || result.stdout);
+    assert.ok(lstatSync(commandPath).isFile());
+    assert.equal(
+      readFileSync(commandPath, "utf8"),
+      renderManagedWorkflowContent(sourceContent, { augmentContextEngine: false })
+    );
+  } finally {
+    rmSync(homeDir, { recursive: true, force: true });
+  }
+});
+
+test("package-root install replaces the legacy Pi extension file with the managed directory", () => {
+  const homeDir = mkdtempAgentsHome();
+  const agentsDir = join(homeDir, ".agents");
+  const legacySource = join(agentsDir, "extensions", "pi-gpt-responses-compat.ts");
+  const legacyTarget = join(homeDir, ".pi", "agent", "extensions", "pi-gpt-responses-compat.ts");
+  try {
+    mkdirSync(join(agentsDir, "extensions"), { recursive: true });
+    mkdirSync(join(homeDir, ".pi", "agent", "extensions"), { recursive: true });
+    writeFileSync(legacySource, "export default function () {}\n", "utf8");
+    writeFileSync(legacyTarget, "export default function () {}\n", "utf8");
+    writeFileSync(join(agentsDir, ".abelworkflow-install.json"), `${JSON.stringify({
+      managedChildren: { extensions: ["pi-gpt-responses-compat.ts"] },
+      linkedTargets: {
+        [legacyTarget]: {
+          sourcePath: legacySource,
+          kind: "file",
+          mode: "copy"
+        }
+      }
+    }, null, 2)}\n`, "utf8");
+
+    const result = spawnSync(process.execPath, ["bin/abelworkflow.mjs", "install"], {
+      cwd: new URL("../", import.meta.url),
+      env: {
+        ...process.env,
+        HOME: homeDir,
+        USERPROFILE: homeDir,
+        NO_COLOR: "1"
+      },
+      encoding: "utf8"
+    });
+
+    assert.equal(result.status, 0, result.stderr || result.stdout);
+    assert.equal(existsSync(legacySource), false);
+    assert.equal(existsSync(legacyTarget), false);
+    assert.match(readFileSync(join(
+      homeDir,
+      ".pi",
+      "agent",
+      "extensions",
+      "pi-gpt-responses-compat",
+      "tls-fetch.mjs"
+    ), "utf8"), /createProviderTlsFetch/u);
   } finally {
     rmSync(homeDir, { recursive: true, force: true });
   }
@@ -984,7 +1233,7 @@ test("source-clone install renders workflow templates in place before linking", 
     const agentsContent = readFileSync(join(agentsDir, "AGENTS.md"), "utf8");
     const researchContent = readFileSync(join(agentsDir, "commands", "abel-research.md"), "utf8");
     const linkedAgentsContent = readFileSync(join(homeDir, ".codex", "AGENTS.md"), "utf8");
-    const piExtensionContent = readFileSync(join(homeDir, ".pi", "agent", "extensions", "pi-gpt-responses-compat.ts"), "utf8");
+    const piExtensionContent = readFileSync(join(homeDir, ".pi", "agent", "extensions", "pi-gpt-responses-compat", "index.ts"), "utf8");
 
     assert.match(agentsContent, /Use local codebase retrieval with `rg`, `rg --files`, `git grep`, and direct file reads/u);
     assert.doesNotMatch(agentsContent, /\{\{[A-Z_]+\}\}/u);
@@ -1007,6 +1256,24 @@ test("Claude default permissions include augment MCP only when feature is enable
     .permissions.allow.includes("mcp__augment-context-engine"));
   assert.ok(!mergeClaudeSettingsWithDefaults({}, { augmentContextEngine: false })
     .permissions.allow.includes("mcp__augment-context-engine"));
+  assert.ok(!("NODE_TLS_REJECT_UNAUTHORIZED" in enabledSettings.env));
+  assert.ok(!("NODE_TLS_REJECT_UNAUTHORIZED" in mergeClaudeSettingsWithDefaults({}).env));
+  assert.equal(mergeClaudeSettingsWithDefaults({
+    env: { NODE_TLS_REJECT_UNAUTHORIZED: "0" }
+  }).env.NODE_TLS_REJECT_UNAUTHORIZED, "0");
+});
+
+test("Claude insecure TLS setting requires explicit opt-in and is reversible", () => {
+  const env = { HTTPS_PROXY: "http://127.0.0.1:7890" };
+  assert.deepEqual(applyClaudeInsecureTlsSetting(env, false), env);
+  assert.deepEqual(applyClaudeInsecureTlsSetting(env, true), {
+    ...env,
+    NODE_TLS_REJECT_UNAUTHORIZED: "0"
+  });
+  assert.deepEqual(applyClaudeInsecureTlsSetting({
+    ...env,
+    NODE_TLS_REJECT_UNAUTHORIZED: "0"
+  }, false), env);
 });
 
 test("applyClaudePermissionFeature only removes augment MCP permission when previously managed", () => {

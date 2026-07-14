@@ -82,7 +82,7 @@ npx abelworkflow@latest
 >   - 一键安装或更新 `Claude Code`、`Codex`、`Pi`
 >   - 配置 `Claude Code` 的第三方 API 到 `~/.claude/settings.json`
 >   - 配置 `Codex` 的第三方 API 到 `~/.codex/config.toml` 和 `~/.codex/auth.json`
->   - 配置 `Pi` 的自定义 API 到 `~/.pi/agent/models.json` 中的 `gpt` provider，并设置 `~/.pi/agent/settings.json` 默认模型，同时携带 Pi 扩展
+>   - 配置 `Pi` 的自定义 API 到 `~/.pi/agent/models.json` 和 `~/.pi/agent/auth.json` 中的 `gpt` provider，并设置 `~/.pi/agent/settings.json` 默认模型，同时携带 Pi 扩展
 > - 非交互场景请显式使用 `npx abelworkflow install`，不再保留旧的默认自动同步逻辑。
 
 ### 交互式初始化能力
@@ -107,6 +107,23 @@ npx abelworkflow --help
 7. 可选安装 `Pi` CLI
 8. 可选配置 Pi `gpt` provider 自定义 API，并链接 Pi 扩展
 9. 可选填写三个技能的环境变量
+
+### 自签名 HTTPS 中转
+
+默认不会关闭 TLS 证书校验。自签名中转应优先取得其 CA PEM，并在启动客户端前设置：
+
+```bash
+export NODE_EXTRA_CA_CERTS=/absolute/path/relay-ca.pem
+export CODEX_CA_CERTIFICATE=/absolute/path/relay-ca.pem
+```
+
+- `NODE_EXTRA_CA_CERTS` 供 Claude Code 和 Pi 使用，必须在启动进程前设置。
+- `CODEX_CA_CERTIFICATE` 供 Codex 原生客户端使用；也可使用 `SSL_CERT_FILE`。
+- Claude Code 的配置向导提供显式“不安全 TLS”选项，但它会影响该 Claude Code 进程内的全部 HTTPS 请求。
+- Pi 的配置向导可仅为配置的 `gpt` 请求启用不安全 TLS；扩展会移除内部标记，不影响其他请求。
+- Codex 没有已验证的跳过证书校验配置。无法提供可信 PEM 时，只能使用中转明确提供的 `http://` 地址或受控的本地反向代理。
+
+证书过期或主机名不匹配时应重新签发证书，不能用附加 CA 安全修复。不要在 shell 配置中全局设置 `NODE_TLS_REJECT_UNAUTHORIZED=0`。
 
 ### 技能环境写入位置
 
@@ -183,7 +200,7 @@ node .\bin\abelworkflow.mjs install
 | `AGENTS.md` | `~/.claude/CLAUDE.md` | `~/.codex/AGENTS.md` | `~/.pi/agent/AGENTS.md` | 全局系统提示词/规则 |
 | `skills/<skill>/` | `~/.claude/skills/<skill>/` | `~/.codex/skills/<skill>/` | `~/.pi/agent/skills/<skill>/` | Skills（每个目录一个技能） |
 | `commands/abel-*.md` | `~/.claude/commands/abel-*.md` | `~/.codex/prompts/abel-*.md` | `~/.pi/agent/prompts/abel-*.md` | 扁平化部署，避免命名冲突 |
-| `extensions/*.ts` | - | - | `~/.pi/agent/extensions/*.ts` | Pi 扩展 |
+| `extensions/*` | - | - | `~/.pi/agent/extensions/*` | Pi 扩展文件或目录 |
 
 ### 验证（可选）
 

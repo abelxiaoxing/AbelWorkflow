@@ -1,6 +1,23 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { createNodeInsecureDispatcher, installProviderTlsFetch } from "./tls-fetch.mjs";
+
+let nodeInsecureDispatcher: unknown;
+
+function getNodeInsecureDispatcher() {
+  if (nodeInsecureDispatcher) return nodeInsecureDispatcher;
+  nodeInsecureDispatcher = createNodeInsecureDispatcher();
+  return nodeInsecureDispatcher;
+}
 
 export default function (pi: ExtensionAPI) {
+  if (typeof globalThis.fetch === "function") {
+    const runtime = typeof (globalThis as any).Bun === "undefined" ? "node" : "bun";
+    installProviderTlsFetch({
+      runtime,
+      insecureDispatcher: runtime === "node" ? getNodeInsecureDispatcher : undefined
+    });
+  }
+
   pi.on("before_provider_request", (event, ctx) => {
     const payload = event.payload as any;
     if (!payload || typeof payload !== "object" || Array.isArray(payload)) return;

@@ -51,6 +51,49 @@ test("buildCodexConfigContent preserves existing guardian_subagent", () => {
   assert.doesNotMatch(content, /approvals_reviewer = "reviewer"/u);
 });
 
+test("bundled Codex config does not disable Node TLS verification", () => {
+  const bundledTemplate = readFileSync(new URL("../lib/templates/codex/config-base.toml", import.meta.url), "utf8");
+
+  assert.doesNotMatch(bundledTemplate, /NODE_TLS_REJECT_UNAUTHORIZED/u);
+  assert.doesNotMatch(bundledTemplate, /^\[shell_environment_policy\.set\]$/mu);
+});
+
+test("buildCodexConfigContent does not inject Node TLS settings", () => {
+  const bundledTemplate = readFileSync(new URL("../lib/templates/codex/config-base.toml", import.meta.url), "utf8");
+  const content = buildCodexConfigContent("model = \"custom-model\"\n", {
+    templateContent: bundledTemplate,
+    mergeMissingTemplateDefaults: true,
+    includeSubagentDefaults: true,
+    providerId: "abelworkflow",
+    providerName: "abelworkflow",
+    baseUrl: "https://example.com/v1",
+    envKey: "OPENAI_API_KEY"
+  });
+
+  assert.doesNotMatch(content, /NODE_TLS_REJECT_UNAUTHORIZED/u);
+  assert.doesNotMatch(content, /^\[shell_environment_policy\.set\]$/mu);
+});
+
+test("buildCodexConfigContent preserves an inline shell environment map without TLS injection", () => {
+  const bundledTemplate = readFileSync(new URL("../lib/templates/codex/config-base.toml", import.meta.url), "utf8");
+  const options = {
+    templateContent: bundledTemplate,
+    mergeMissingTemplateDefaults: true,
+    includeSubagentDefaults: true,
+    providerId: "abelworkflow",
+    providerName: "abelworkflow",
+    baseUrl: "https://example.com/v1",
+    envKey: "OPENAI_API_KEY"
+  };
+  const content = buildCodexConfigContent(`[shell_environment_policy]
+set = { HTTPS_PROXY = "http://127.0.0.1:7890" }
+`, options);
+
+  assert.match(content, /^set = \{ HTTPS_PROXY = "http:\/\/127\.0\.0\.1:7890" \}$/mu);
+  assert.doesNotMatch(content, /NODE_TLS_REJECT_UNAUTHORIZED/u);
+  assert.doesNotMatch(content, /^\[shell_environment_policy\.set\]$/mu);
+});
+
 test("bundled Codex subagent templates use the base default model", () => {
   const baseConfig = readFileSync(new URL("../lib/templates/codex/config-base.toml", import.meta.url), "utf8");
   const baseModel = baseConfig.match(/^model\s*=\s*"([^"]+)"/mu)?.[1];

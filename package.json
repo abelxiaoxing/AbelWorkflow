@@ -1,10 +1,10 @@
 {
   "name": "abelworkflow",
-  "version": "0.9.1",
+  "version": "0.9.2",
   "description": "Install AbelWorkflow into ~/.agents and create Claude/Codex symlinks.",
   "type": "module",
   "scripts": {
-    "test": "node --test test/runtime-doc-contracts.test.mjs test/cli-contracts.test.mjs test/codex-config.test.mjs",
+    "test": "node --test test/runtime-doc-contracts.test.mjs test/cli-contracts.test.mjs test/codex-config.test.mjs test/pi-auth-precedence.test.mjs test/pi-auth-write.test.mjs test/pi-provider-tls.test.mjs",
     "test:contracts": "node --test test/runtime-doc-contracts.test.mjs test/cli-contracts.test.mjs"
   },
   "bin": {
@@ -27,6 +27,7 @@
   "license": "MIT",
   "dependencies": {
     "@clack/prompts": "^1.2.0",
-    "picocolors": "^1.1.1"
+    "picocolors": "^1.1.1",
+    "proper-lockfile": "4.1.2"
   }
 }
