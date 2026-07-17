@@ -1,9 +1,0 @@
-# Using explicit paths to avoid Windows glob issues
-.env
-.venv
-__pycache__
-node_modules
-.vite
-tmp
-dist
-build

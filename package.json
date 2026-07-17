@@ -1,11 +1,20 @@
 {
   "name": "abelworkflow",
-  "version": "0.9.2",
+  "version": "1.0.0-rc.1",
   "description": "Install AbelWorkflow into ~/.agents and create Claude/Codex symlinks.",
   "type": "module",
   "scripts": {
-    "test": "node --test test/runtime-doc-contracts.test.mjs test/cli-contracts.test.mjs test/codex-config.test.mjs test/pi-auth-precedence.test.mjs test/pi-auth-write.test.mjs test/pi-provider-tls.test.mjs",
-    "test:contracts": "node --test test/runtime-doc-contracts.test.mjs test/cli-contracts.test.mjs"
+    "test": "npm run test:node",
+    "test:node": "node --test test/*.test.mjs",
+    "test:python": "python -m unittest discover -s test",
+    "test:dev-browser": "npm test --prefix skills/dev-browser",
+    "test:contracts": "node --test test/runtime-doc-contracts.test.mjs test/cli-args.test.mjs",
+    "typecheck": "npm run typecheck --prefix skills/dev-browser",
+    "build": "npm run build --prefix skills/dev-browser",
+    "prepack": "npm run build",
+    "check:docs": "node --test test/docs-contracts.test.mjs test/runtime-doc-contracts.test.mjs",
+    "check:package": "node --test test/package-contents.test.mjs",
+    "check": "npm run build && npm run test:node && npm run test:python && npm run test:dev-browser && npm run typecheck && npm run check:docs && npm run check:package"
   },
   "bin": {
     "abelworkflow": "bin/abelworkflow.mjs"
@@ -13,21 +22,45 @@
   "files": [
     "bin",
     "lib",
-    "AGENTS.md",
     "README.md",
-    "commands",
-    "skills",
     "extensions",
-    ".skill-lock.json",
-    ".gitignore"
+    "skills/context7-auto-research/.env.example",
+    "skills/context7-auto-research/SKILL.md",
+    "skills/context7-auto-research/context7-api.cjs",
+    "skills/dev-browser/SKILL.md",
+    "skills/dev-browser/dist",
+    "skills/dev-browser/package-lock.json",
+    "skills/dev-browser/package.json",
+    "skills/dev-browser/references",
+    "skills/git-commit/SKILL.md",
+    "skills/grok-search/.env.example",
+    "skills/grok-search/SKILL.md",
+    "skills/grok-search/defaults.json",
+    "skills/grok-search/gitignore.template",
+    "skills/grok-search/requirements.txt",
+    "skills/grok-search/scripts/_dotenv.py",
+    "skills/grok-search/scripts/groksearch_cli.py",
+    "skills/grok-search/scripts/groksearch_entry.py",
+    "skills/prompt-enhancer/.env.example",
+    "skills/prompt-enhancer/ADVANCED.md",
+    "skills/prompt-enhancer/SKILL.md",
+    "skills/prompt-enhancer/TEMPLATE.md",
+    "skills/prompt-enhancer/requirements.txt",
+    "skills/prompt-enhancer/scripts/_dotenv.py",
+    "skills/prompt-enhancer/scripts/enhance.py",
+    "skills/prompt-enhancer/scripts/prompt_enhancer_entry.py",
+    "skills/time/SKILL.md",
+    "skills/time/scripts/time_cli.py"
   ],
   "engines": {
-    "node": ">=18"
+    "node": ">=22"
   },
+  "packageManager": "npm@10.9.2",
   "license": "MIT",
   "dependencies": {
     "@clack/prompts": "^1.2.0",
     "picocolors": "^1.1.1",
-    "proper-lockfile": "4.1.2"
+    "proper-lockfile": "4.1.2",
+    "smol-toml": "1.7.0"
   }
 }
