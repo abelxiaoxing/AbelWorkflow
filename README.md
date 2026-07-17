@@ -1,224 +1,97 @@
 # AbelWorkflow
 
-Codex、OpenCode、Claude Code、Pi 的 Skills、Commands/Prompts 和扩展配置仓库。
+AbelWorkflow 为 Codex、Claude Code 和 Pi 部署统一的 Skills、工作流命令、Agent 配置与扩展。
 
-## 目录结构
+## 环境要求
 
-```
-.agents/
-├── skills/              # 技能目录
-│   ├── time/                    # 时间与时区工具
-│   ├── grok-search/             # 增强型网页搜索
-│   ├── sequential-think/        # 多步推理引擎
-│   ├── dev-browser/             # 浏览器自动化
-│   ├── context7-auto-research/   # 自动文档检索
-│   ├── confidence-check/        # 实施前信心评估
-│   ├── git-commit/            # Git 提交助手
-│   └── prompt-enhancer/     # 提示词优化器
-├── commands/           # 命令目录
-│   └── oc/                # 工作流命令
-├── extensions/         # Pi 扩展
-├── AGENTS.md         # Agent 全局系统 prompts
-└── README.md
-```
+- Node.js 22 或更高版本
+- npm 10 或兼容版本
+- Linux、macOS 或原生 Windows
 
-## 技能概览
+## 正式工作流命令
 
-| 技能 | 描述 |
-|------|------|
-| **time** | 时间和时区工具，获取当前时间及时区转换 |
-| **grok-search** | 通过 Grok API 增强网页搜索与实时内容检索 |
-| **sequential-think** | 多步推理引擎，支持假设检验与分支的复杂分析 |
-| **dev-browser** | 浏览器自动化，支持导航、表单填写、截图与数据提取 |
-| **context7-auto-research** | 自动从 Context7 获取最新库/框架文档 |
-| **confidence-check** | 实施前置信度评估（≥90%），含架构合规与根因识别 |
-| **git-commit** | Conventional Commits 规范提交，智能暂存与消息生成 |
-| **prompt-enhancer** | CoT 推理优化 AI 编码提示词，模糊请求转结构化指令 |
+| 命令 | 用途 |
+| --- | --- |
+| `/abel-init` | 初始化 OpenSpec 环境并验证工具链 |
+| `/abel-research` | 研究需求并生成约束，不实施代码 |
+| `/abel-plan` | 将已确认变更细化为可执行计划 |
+| `/abel-implement` | 按强制 TDD 实施已批准变更 |
+| `/abel-diagnose` | 进行根因分析、回归测试和批量修复 |
 
-## 命令概览
+工作流：
 
-| 命令 | 描述 |
-|------|------|
-| **/oc:init** | 初始化 OpenSpec 环境并验证工具链 |
-| **/oc:research** | 结构化需求探索与约束集生成（不实施） |
-| **/oc:plan** | 将已批准变更细化为零决策可执行方案 |
-| **/oc:implementation** | 以 TDD 方式实施已批准的变更 |
-| **/oc:diagnose** | 系统化根因分析与批量修复报告 |
-
-## 工作流
-
-```
-/oc:init → /oc:research → /oc:plan → /oc:implementation(TDD)
-                                   ↘ /oc:diagnose (bug fix)
+```text
+/abel-init → /abel-research → /abel-plan → /abel-implement(TDD)
+                                      ↘ /abel-diagnose (bug fix)
 ```
 
-## 配置说明
-
-- **目录位置**:
-  - Linux/macOS: `~/.agents/`
-  - Windows: `%USERPROFILE%\.agents\`（PowerShell: `$HOME\.agents`）
-- **AGENTS.md**: Agent 全局系统 prompts 配置
+OpenSpec 命令保持独立：`/opsx:new`、`/opsx:ff`、`/opsx:archive`、`openspec view`、`openspec status`。
 
 ## 安装与更新
 
-### 方法一：npx 一键安装（推荐）
+### npx
 
 ```bash
-# 交互式初始化菜单
 npx abelworkflow
-
-# 直接执行工作流同步/重链
 npx abelworkflow install
-
-# 更新到最新发布版本
 npx abelworkflow@latest
 ```
 
-> 说明：
-> - npm 发布包名必须使用小写，所以实际可执行命令是 `npx abelworkflow`。
-> - 交互式模式下，默认会打开初始化菜单，支持：
->   - 同步 `~/.agents` 并自动重建 `~/.claude` / `~/.codex` / `~/.pi/agent` 链接
->   - 交互式填写 `grok-search`、`context7-auto-research`、`prompt-enhancer` 的 `.env`
->   - 一键安装或更新 `Claude Code`、`Codex`、`Pi`
->   - 配置 `Claude Code` 的第三方 API 到 `~/.claude/settings.json`
->   - 配置 `Codex` 的第三方 API 到 `~/.codex/config.toml` 和 `~/.codex/auth.json`
->   - 配置 `Pi` 的自定义 API 到 `~/.pi/agent/models.json` 和 `~/.pi/agent/auth.json` 中的 `gpt` provider，并设置 `~/.pi/agent/settings.json` 默认模型，同时携带 Pi 扩展
-> - 非交互场景请显式使用 `npx abelworkflow install`，不再保留旧的默认自动同步逻辑。
+无 TTY 的环境必须显式运行 `npx abelworkflow install`。安装器将工作流部署到 `~/.agents`，并维护 Claude、Codex 与 Pi 的链接。
 
-### 交互式初始化能力
+### 源码安装
 
-`npx abelworkflow` 现在默认提供一个类似 `npx zcf` 的菜单，常见入口包括：
+源码目录和部署目录必须分离，不能相同或互相嵌套。推荐流程：
 
 ```bash
-npx abelworkflow
-npx abelworkflow init
-npx abelworkflow install
-npx abelworkflow --help
+git clone https://github.com/abelxiaoxing/AbelWorkflow ~/src/AbelWorkflow
+cd ~/src/AbelWorkflow
+npm ci
+npm ci --prefix skills/dev-browser
+npm run build
+node bin/abelworkflow.mjs install --agents-dir ~/.agents
 ```
 
-其中完整初始化会按需引导你完成：
+Windows PowerShell 可将源码克隆到 `$HOME\src\AbelWorkflow`，然后运行相同的 npm 命令，并使用：
 
-1. 安装 AbelWorkflow 到 `~/.agents`
-2. 自动链接到 `~/.claude/`、`~/.codex/` 和 `~/.pi/agent/`
-3. 可选安装 `Claude Code` CLI
-4. 可选配置 `Claude Code` 第三方 API
-5. 可选安装 `Codex` CLI
-6. 可选配置 `Codex` 第三方 API
-7. 可选安装 `Pi` CLI
-8. 可选配置 Pi `gpt` provider 自定义 API，并链接 Pi 扩展
-9. 可选填写三个技能的环境变量
+```powershell
+node .\bin\abelworkflow.mjs install --agents-dir "$HOME\.agents"
+```
 
-### 自签名 HTTPS 中转
+不要把源码仓库直接克隆到 `~/.agents`。已有这种布局时，先按 [1.0 迁移指南](https://github.com/abelxiaoxing/AbelWorkflow/blob/master/docs/migration-1.0.md) 人工建立独立源码目录；安装器不会猜测性移动或删除用户数据。
 
-默认不会关闭 TLS 证书校验。自签名中转应优先取得其 CA PEM，并在启动客户端前设置：
+## 配置行为
+
+- Claude 默认使用 `standard` 权限档，不预授权 Bash、Write 或 Edit；只有用户明确选择 `trusted` 才增加宽权限。已有 permissions、deny、hooks 和 timeout 保持不变。
+- Codex 只更新 AbelWorkflow 管理的认证字段，保留未知字段、其他 Provider 和用户 token。
+- Pi 0.80.0 及以上版本将 GPT API Key 保存在 `~/.pi/agent/auth.json`；`models.json` 只保留模型定义。旧 models-only key 会按先写 auth、后删除旧 key 的顺序迁移。
+- Grok 默认模型统一为 `grok-4.20-auto`。
+- Context7 使用显式 CommonJS 入口 `context7-api.cjs`。
+- dev-browser 发布运行时使用 Node ESM 编译产物，入口为 `node dist/scripts/start.js`，不依赖 Bun 或运行时 `npx tsx`。
+- skill 密钥写入 `~/.agents/skills/<skill>/.env`；这些文件属于私密配置。
+
+`.skill-lock.json` 完全属于用户：安装器不读取、不修改、不备份、不删除，也不会把它放入发布包。
+
+## 部署映射
+
+| 托管内容 | Claude Code | Codex | Pi |
+| --- | --- | --- | --- |
+| 工作流 AGENTS 模板 | `~/.claude/CLAUDE.md` | `~/.codex/AGENTS.md` | `~/.pi/agent/AGENTS.md` |
+| `skills/<skill>/` | `~/.claude/skills/<skill>/` | `~/.codex/skills/<skill>/` | `~/.pi/agent/skills/<skill>/` |
+| `abel-*.md` 命令 | `~/.claude/commands/` | `~/.codex/prompts/` | `~/.pi/agent/prompts/` |
+| `extensions/*` | — | — | `~/.pi/agent/extensions/` |
+
+## 自签名 HTTPS 中转
+
+优先取得中转的 CA PEM，并在启动客户端前配置：
 
 ```bash
 export NODE_EXTRA_CA_CERTS=/absolute/path/relay-ca.pem
 export CODEX_CA_CERTIFICATE=/absolute/path/relay-ca.pem
 ```
 
-- `NODE_EXTRA_CA_CERTS` 供 Claude Code 和 Pi 使用，必须在启动进程前设置。
-- `CODEX_CA_CERTIFICATE` 供 Codex 原生客户端使用；也可使用 `SSL_CERT_FILE`。
-- Claude Code 的配置向导提供显式“不安全 TLS”选项，但它会影响该 Claude Code 进程内的全部 HTTPS 请求。
-- Pi 的配置向导可仅为配置的 `gpt` 请求启用不安全 TLS；扩展会移除内部标记，不影响其他请求。
-- Codex 没有已验证的跳过证书校验配置。无法提供可信 PEM 时，只能使用中转明确提供的 `http://` 地址或受控的本地反向代理。
+不要全局设置 `NODE_TLS_REJECT_UNAUTHORIZED=0`。证书过期或主机名不匹配时应重新签发证书。
 
-证书过期或主机名不匹配时应重新签发证书，不能用附加 CA 安全修复。不要在 shell 配置中全局设置 `NODE_TLS_REJECT_UNAUTHORIZED=0`。
+## 升级
 
-### 技能环境写入位置
-
-交互式配置会把技能密钥写到 `~/.agents` 下对应 skill 目录的 `.env` 中：
-
-| 技能 | 写入位置 | 主要字段 |
-|---|---|---|
-| `grok-search` | `~/.agents/skills/grok-search/.env` | `GROK_API_URL` `GROK_API_KEY` `GROK_MODEL` |
-| `context7-auto-research` | `~/.agents/skills/context7-auto-research/.env` | `CONTEXT7_API_KEY` |
-| `prompt-enhancer` | `~/.agents/skills/prompt-enhancer/.env` | `PE_API_URL` `PE_API_KEY` `PE_MODEL` |
-
-### 方法二：源码克隆安装
-
-如需自定义修改或贡献代码，可手动克隆后直接运行本地 CLI：
-
-#### 1. 克隆仓库
-
-**Linux/macOS（bash/zsh）**
-
-```bash
-# 首次安装
-git clone https://github.com/abelxiaoxing/AbelWorkflow ~/.agents
-
-# 更新
-git -C ~/.agents pull
-```
-
-**Windows（PowerShell）**
-
-```powershell
-# 首次安装
-git clone https://github.com/abelxiaoxing/AbelWorkflow "$HOME\.agents"
-
-# 更新
-git -C "$HOME\.agents" pull
-```
-
-#### 2. 执行本地初始化
-
-**Linux/macOS（bash/zsh）**
-
-```bash
-cd ~/.agents
-node bin/abelworkflow.mjs
-```
-
-**Windows（PowerShell）**
-
-```powershell
-Set-Location "$HOME\.agents"
-node .\bin\abelworkflow.mjs
-```
-
-如果只想重建链接，不进入菜单：
-
-**Linux/macOS（bash/zsh）**
-
-```bash
-cd ~/.agents
-node bin/abelworkflow.mjs install
-```
-
-**Windows（PowerShell）**
-
-```powershell
-Set-Location "$HOME\.agents"
-node .\bin\abelworkflow.mjs install
-```
-
-### 映射关系（本仓库 → 配置目录）
-
-| 本仓库 | Claude Code | Codex | Pi | 说明 |
-|---|---|---|---|---|
-| `AGENTS.md` | `~/.claude/CLAUDE.md` | `~/.codex/AGENTS.md` | `~/.pi/agent/AGENTS.md` | 全局系统提示词/规则 |
-| `skills/<skill>/` | `~/.claude/skills/<skill>/` | `~/.codex/skills/<skill>/` | `~/.pi/agent/skills/<skill>/` | Skills（每个目录一个技能） |
-| `commands/abel-*.md` | `~/.claude/commands/abel-*.md` | `~/.codex/prompts/abel-*.md` | `~/.pi/agent/prompts/abel-*.md` | 扁平化部署，避免命名冲突 |
-| `extensions/*` | - | - | `~/.pi/agent/extensions/*` | Pi 扩展文件或目录 |
-
-### 验证（可选）
-
-**Linux/macOS（bash/zsh）**
-
-```bash
-ls -la "$HOME/.claude/CLAUDE.md" "$HOME/.claude/commands/"abel-*.md
-ls -la "$HOME/.codex/AGENTS.md" "$HOME/.codex/prompts/"abel-*.md
-cat "$HOME/.claude/settings.json" | head
-cat "$HOME/.codex/config.toml" | head
-```
-
-**Windows（PowerShell）**
-
-```powershell
-Get-Item "$HOME\.claude\CLAUDE.md"; Get-ChildItem "$HOME\.claude\commands\abel-*.md"
-Get-Item "$HOME\.codex\AGENTS.md"
-Get-ChildItem "$HOME\.codex\prompts\abel-*.md"
-Get-Content "$HOME\.claude\settings.json" -TotalCount 10
-Get-Content "$HOME\.codex\config.toml" -TotalCount 10
-```
+从 0.x 升级前请阅读 [AbelWorkflow 1.0 迁移指南](https://github.com/abelxiaoxing/AbelWorkflow/blob/master/docs/migration-1.0.md)。指南涵盖源码/部署目录拆分、metadata v2、Provider 配置、用户状态、dev-browser 和回滚。
