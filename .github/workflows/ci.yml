@@ -1,0 +1,40 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  verify:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            node-version: 22
+            pack: true
+          - os: windows-latest
+            node-version: 22
+            pack: false
+          - os: ubuntu-latest
+            node-version: 24
+            pack: false
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix['node-version'] }}
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            skills/dev-browser/package-lock.json
+      - run: npm ci
+      - run: npm ci --prefix skills/dev-browser
+      - name: Install Playwright Chromium
+        working-directory: skills/dev-browser
+        run: npx playwright install --with-deps chromium
+      - run: npm run check
+      - if: matrix.pack
+        run: npm pack --dry-run --json
