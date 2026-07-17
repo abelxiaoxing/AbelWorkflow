@@ -5,9 +5,7 @@
 *.log
 */node_modules/
 */tmp/
-skills/dev-browser/profiles/
-skills/dev-browser/tmp/
-skills/dev-browser/.cache/
+skills/dev-browser/dist/
 *cache*/
 */dist/
 */build/
@@ -15,4 +13,3 @@ skills/dev-browser/.cache/
 .codex/
 *pycache*/
 openspec/
-package-lock.json
