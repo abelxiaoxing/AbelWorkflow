@@ -1,161 +1,114 @@
-import { dirname, join } from "node:path";
+import { createServer } from "node:net";
+import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-export interface CommandStatusResult {
-  status: number | null;
-}
-
-export interface PackageManager {
-  name: "bun" | "pnpm" | "npm";
+export interface RuntimeCommand {
   command: string;
   args: string[];
 }
 
+export interface TcpPortProbe {
+  once(event: "error" | "listening", listener: () => void): this;
+  listen(port: number, host: string): unknown;
+  close(callback: () => void): unknown;
+}
+
+export type TcpPortProbeFactory = () => TcpPortProbe;
+
+export type PlaywrightChromiumExecutableName = "chromium" | "chromium-headless-shell";
+
 export interface ChromiumInstallCheckOptions {
-  skillDir: string;
-  platform: NodeJS.Platform;
-  env: NodeJS.ProcessEnv;
-  exists: (path: string) => boolean;
-  readDir: (path: string) => string[];
-}
-
-export interface MissingPackageDependenciesOptions {
-  skillDir: string;
-  dependencies: string[];
+  headless: boolean;
+  findExecutable: (name: PlaywrightChromiumExecutableName) =>
+    | { executablePath: () => string | undefined }
+    | undefined;
   exists: (path: string) => boolean;
 }
 
-export function commandExists(
-  command: string,
-  runCheck: (command: string) => CommandStatusResult
-): boolean {
-  return runCheck(command).status === 0;
-}
-
-export function findAvailablePackageManager(
-  hasCommand: (command: string) => boolean
-): PackageManager | null {
-  const candidates: PackageManager[] = [
+export interface RuntimePackageLock {
+  packages?: Record<
+    string,
     {
-      name: "bun",
-      command: "bunx",
-      args: ["playwright", "install", "chromium"],
-    },
-    {
-      name: "pnpm",
-      command: "pnpm",
-      args: ["exec", "playwright", "install", "chromium"],
-    },
-    {
-      name: "npm",
-      command: "npx",
-      args: ["playwright", "install", "chromium"],
-    },
-  ];
-
-  for (const candidate of candidates) {
-    const probe = candidate.name === "npm" ? "npm" : candidate.name;
-    if (hasCommand(probe)) {
-      return candidate;
+      dependencies?: Record<string, string>;
+      version?: string;
     }
-  }
-
-  return null;
+  >;
 }
 
-export function getPlaywrightInstallCommand(manager: PackageManager): string {
-  return [manager.command, ...manager.args].join(" ");
+export interface InvalidRuntimeDependenciesOptions {
+  skillDir: string;
+  lockedDependencies: Record<string, string>;
+  readPackageVersion: (packageJsonPath: string) => string | undefined;
 }
 
-function normalizePathForComparison(path: string): string {
-  return path.replaceAll("\\", "/").replace(/\/+/g, "/").toLowerCase();
+export function getRuntimeDependencyInstallCommand(): RuntimeCommand {
+  return { command: "npm", args: ["ci", "--omit=dev"] };
 }
 
-export function getPlaywrightBrowserRoots({
+export function getPlaywrightInstallCommand({
   skillDir,
-  platform,
-  env,
+  nodeExecutable = process.execPath,
 }: {
   skillDir: string;
-  platform: NodeJS.Platform;
-  env: NodeJS.ProcessEnv;
-}): string[] {
-  const explicitPath = env.PLAYWRIGHT_BROWSERS_PATH?.trim();
-  if (explicitPath) {
-    if (explicitPath === "0") {
-      return [join(skillDir, "node_modules", "playwright-core", ".local-browsers")];
-    }
-    return [explicitPath];
-  }
+  nodeExecutable?: string;
+}): RuntimeCommand {
+  return {
+    command: nodeExecutable,
+    args: [join(skillDir, "node_modules", "playwright", "cli.js"), "install", "chromium"],
+  };
+}
 
-  if (platform === "win32") {
-    const roots: string[] = [];
-    const localAppData = env.LOCALAPPDATA?.trim();
-    if (localAppData) {
-      roots.push(join(localAppData, "ms-playwright"));
-    }
-
-    const userProfile = env.USERPROFILE?.trim() ?? env.HOME?.trim();
-    if (userProfile) {
-      const fallbackRoot = join(userProfile, "AppData", "Local", "ms-playwright");
-      if (!roots.some((root) => normalizePathForComparison(root) === normalizePathForComparison(fallbackRoot))) {
-        roots.push(fallbackRoot);
-      }
-    }
-
-    return roots;
-  }
-
-  const home = env.HOME ?? env.USERPROFILE;
-  return home ? [join(home, ".cache", "ms-playwright")] : [];
+export async function isTcpPortInUse(
+  port: number,
+  host = "127.0.0.1",
+  createProbe: TcpPortProbeFactory = createServer
+): Promise<boolean> {
+  return await new Promise((resolve) => {
+    const server = createProbe();
+    server.once("error", () => resolve(true));
+    server.once("listening", () => server.close(() => resolve(false)));
+    server.listen(port, host);
+  });
 }
 
 export function isPlaywrightChromiumInstalled({
-  skillDir,
-  platform,
-  env,
+  headless,
+  findExecutable,
   exists,
-  readDir,
 }: ChromiumInstallCheckOptions): boolean {
-  for (const root of getPlaywrightBrowserRoots({ skillDir, platform, env })) {
-    if (!exists(root)) {
-      continue;
-    }
-
-    try {
-      const entries = readDir(root);
-      if (entries.some((entry) => entry.startsWith("chromium"))) {
-        return true;
-      }
-    } catch {
-      // Ignore unreadable directories and continue probing.
-    }
-  }
-
-  return false;
+  const name = headless ? "chromium-headless-shell" : "chromium";
+  const executablePath = findExecutable(name)?.executablePath();
+  return typeof executablePath === "string" && executablePath.length > 0 && exists(executablePath);
 }
 
-export function getMissingPackageDependencies({
+export function getLockedRuntimeDependencies(
+  lockfile: RuntimePackageLock
+): Record<string, string> {
+  const packages = lockfile.packages ?? {};
+  return Object.fromEntries(
+    Object.keys(packages[""]?.dependencies ?? {}).map((name) => {
+      const version = packages[`node_modules/${name}`]?.version;
+      if (!version) throw new Error(`Missing locked version for runtime dependency ${name}`);
+      return [name, version];
+    })
+  );
+}
+
+export function getInvalidRuntimeDependencies({
   skillDir,
-  dependencies,
-  exists,
-}: MissingPackageDependenciesOptions): string[] {
-  return dependencies.filter(
-    (dependency) =>
-      !exists(join(skillDir, "node_modules", ...dependency.split("/"), "package.json"))
+  lockedDependencies,
+  readPackageVersion,
+}: InvalidRuntimeDependenciesOptions): string[] {
+  return Object.entries(lockedDependencies).flatMap(([name, version]) =>
+    readPackageVersion(join(skillDir, "node_modules", ...name.split("/"), "package.json")) ===
+    version
+      ? []
+      : [name]
   );
 }
 
 export function resolveRuntimePaths(skillDir: string) {
-  const tmpDir = join(skillDir, "tmp");
-  const profileDir = join(skillDir, "profiles");
-
-  return {
-    skillDir,
-    tmpDir,
-    profileDir,
-    browserDataDir: join(profileDir, "browser-data"),
-  };
+  return { skillDir };
 }
 
 export function resolveImportMetaDir(moduleUrl: string): string {
@@ -163,7 +116,8 @@ export function resolveImportMetaDir(moduleUrl: string): string {
 }
 
 export function resolveSkillDirFromEntrypoint(moduleUrl: string): string {
-  return dirname(resolveImportMetaDir(moduleUrl));
+  const parentDir = dirname(resolveImportMetaDir(moduleUrl));
+  return basename(parentDir) === "dist" ? dirname(parentDir) : parentDir;
 }
 
 export function shouldUseShellForPackageCommands(platform: NodeJS.Platform): boolean {

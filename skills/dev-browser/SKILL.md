@@ -1,11 +1,11 @@
 ---
 name: dev-browser
-description: Browser automation with persistent page state. Use when users ask to navigate websites, fill forms, take screenshots, extract web data, test web apps, or automate browser workflows. Trigger phrases include "go to [url]", "click on", "fill out the form", "take a screenshot", "scrape", "automate", "test the website", "log into", or any browser interaction request.
+description: Browser automation with page state shared while the server process runs. Use when users ask to navigate websites, fill forms, take screenshots, extract web data, test web apps, or automate browser workflows. Trigger phrases include "go to [url]", "click on", "fill out the form", "take a screenshot", "scrape", "automate", "test the website", "log into", or any browser interaction request.
 ---
 
 # Dev Browser Skill
 
-Browser automation that maintains page state across script executions. Write small, focused scripts to accomplish tasks incrementally. Once you've proven out part of a workflow and there is repeated work to be done, you can write a script to do the repeated work in a single execution.
+Browser automation that maintains page state across script executions while the server process runs. Write small, focused scripts to accomplish tasks incrementally.
 
 ## Choosing Your Approach
 
@@ -22,13 +22,13 @@ Two supported startup modes are available on **Linux** and **native Windows**. R
 Launches a new Chromium browser for fresh automation sessions.
 
 ```text
-npx tsx scripts/start.ts standalone
+node dist/scripts/start.js standalone
 ```
 
 Add `--headless` if needed:
 
 ```text
-npx tsx scripts/start.ts standalone --headless
+node dist/scripts/start.js standalone --headless
 ```
 
 Wait for the stable readiness line `Ready` before running scripts.
@@ -43,7 +43,7 @@ Connects to the user's existing Chrome browser. Use this when:
 Start the relay server with:
 
 ```text
-npx tsx scripts/start.ts extension
+node dist/scripts/start.js extension
 ```
 
 Wait for `Waiting for extension to connect...`. Once the browser extension attaches, the relay logs `Extension connected`.
@@ -54,24 +54,31 @@ If the extension hasn't connected yet, tell the user to launch and activate it. 
 
 | Mode | Linux | Native Windows | Readiness signal | Notes |
 |------|-------|----------------|------------------|-------|
-| standalone mode | Supported | Supported | `Ready` | Launches a managed Chromium profile under `profiles/` |
+| standalone mode | Supported | Supported | `Ready` | Uses a process-owned temporary Chromium profile and cleans it on exit |
 | extension mode | Supported | Supported | `Waiting for extension to connect...` then `Extension connected` | Requires the external browser extension to attach |
 
 ## Verification Checklist
 
-- Start `standalone mode` with `npx tsx scripts/start.ts standalone`
+- Start `standalone mode` with `node dist/scripts/start.js standalone`
 - Observe the readiness line `Ready`
 - Connect with `connect()` and create a named page
-- Start `extension mode` with `npx tsx scripts/start.ts extension`
+- Start `extension mode` with `node dist/scripts/start.js extension`
 - Observe `Waiting for extension to connect...`
 - Attach the browser extension and confirm `Extension connected`
 
 ## Known Differences
 
-- `standalone mode` launches and owns its own Chromium profile under this skill directory.
+- `standalone mode` owns a temporary Chromium profile only for the server process lifetime and cleans it on exit.
 - `extension mode` depends on the external browser extension and the user's existing Chrome session.
 - In `extension mode`, relay readiness means the server is waiting for the extension; it does not imply browser control is available until `Extension connected` appears.
 - `standalone mode` is the default path for deterministic local automation; `extension mode` is for working inside an already-authenticated browser.
+
+## Relay Origin Boundary
+
+- State-changing `/pages` requests accept only originless JSON clients; browser-origin and non-JSON mutations are rejected before backend calls.
+- `/cdp` accepts only originless WebSocket clients, which is the normal behavior of the Node client. Browser pages always send an `Origin` and are rejected.
+- `/extension` accepts originless protocol clients and valid `chrome-extension://` origins. HTTP(S), `null`, malformed, and other origins are rejected.
+- Rejected sockets close with WebSocket policy code `1008` before they can own a client ID, replace the extension, or route buffered messages.
 
 ## Non-goal Environments
 
@@ -81,37 +88,45 @@ If the extension hasn't connected yet, tell the user to launch and activate it. 
 
 ## Writing Scripts
 
-Use small TypeScript files under `tmp/` instead of shell heredocs. Run them from the same `dev-browser` skill directory so the `@/` import alias resolves correctly.
+Treat the installed `dev-browser` skill directory as read-only. Store scripts and artifacts in the OS temporary directory or task workspace, never inside the skill directory, and delete files you created when the task ends.
 
-Example script (`tmp/example.ts`):
+External scripts cannot use package self-resolution, so pass the installed skill directory as the first argument and import its compiled client by file URL. Example:
 
-```typescript
-import { connect, waitForPageLoad } from "@/client.js";
+```javascript
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { pathToFileURL } from "node:url";
+
+const skillDir = process.argv[2];
+if (!skillDir) throw new Error("Pass the installed dev-browser skill directory");
+const { connect, waitForPageLoad } = await import(
+  pathToFileURL(join(skillDir, "dist", "src", "client.js")).href
+);
 
 const client = await connect();
 const page = await client.page("example", { viewport: { width: 1920, height: 1080 } });
 
 await page.goto("https://example.com");
 await waitForPageLoad(page);
+const screenshotPath = join(tmpdir(), "dev-browser-screenshot.png");
+await page.screenshot({ path: screenshotPath });
 
-console.log({ title: await page.title(), url: page.url() });
+console.log({ title: await page.title(), url: page.url(), screenshotPath });
 await client.disconnect();
 ```
 
-Run it with:
+This invocation works in Linux shells, PowerShell, and Command Prompt when the two paths are quoted:
 
 ```text
-npx tsx tmp/example.ts
+node "PATH_TO_SCRIPT.mjs" "PATH_TO_INSTALLED_DEV_BROWSER"
 ```
-
-**Write to `tmp/` files only when** the script needs reuse, is complex, or user explicitly requests it.
 
 ### Key Principles
 
 1. **Small scripts**: Each script does ONE thing (navigate, click, fill, check)
 2. **Evaluate state**: Log/return state at the end to decide next steps
 3. **Descriptive page names**: Use `"checkout"`, `"login"`, not `"main"`
-4. **Disconnect to exit**: `await client.disconnect()` - pages persist on server
+4. **Disconnect to exit**: `await client.disconnect()` - pages persist while the server process runs
 5. **Plain JS in evaluate**: `page.evaluate()` runs in browser - no TypeScript syntax
 
 ## Workflow Loop
@@ -156,7 +171,7 @@ const pageWithSize = await client.page("name", { viewport: { width: 1920, height
 
 const pages = await client.list(); // List all page names
 await client.close("name"); // Close a page
-await client.disconnect(); // Disconnect (pages persist)
+await client.disconnect(); // Disconnect (pages persist while the server runs)
 
 // ARIA Snapshot methods
 const snapshot = await client.getAISnapshot("name"); // Get accessibility tree
@@ -167,9 +182,7 @@ The `page` object is a standard Playwright Page.
 
 ## Waiting
 
-```typescript
-import { waitForPageLoad } from "@/client.js";
-
+```javascript
 await waitForPageLoad(page); // After navigation
 await page.waitForSelector(".results"); // For specific elements
 await page.waitForURL("**/success"); // For specific URL
@@ -179,10 +192,17 @@ await page.waitForURL("**/success"); // For specific URL
 
 ### Screenshots
 
-```typescript
-await page.screenshot({ path: "tmp/screenshot.png" });
-await page.screenshot({ path: "tmp/full.png", fullPage: true });
+```javascript
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+const screenshotPath = join(tmpdir(), "dev-browser-screenshot.png");
+const fullScreenshotPath = join(tmpdir(), "dev-browser-full.png");
+await page.screenshot({ path: screenshotPath });
+await page.screenshot({ path: fullScreenshotPath, fullPage: true });
 ```
+
+Inspect the files, then remove them no later than task completion.
 
 ### ARIA Snapshot (Element Discovery)
 
@@ -222,26 +242,26 @@ await element.click();
 
 ## Error Recovery
 
-Page state persists after failures. To inspect the current state, save a short script such as `tmp/debug.ts` and run it from the `dev-browser` skill directory:
+Page state persists after failures while the server process runs. Reuse the external script pattern above from the OS temporary directory or task workspace:
 
-```typescript
-import { connect } from "@/client.js";
-
+```javascript
 const client = await connect();
 const page = await client.page("hackernews");
 
-await page.screenshot({ path: "tmp/debug.png" });
+const debugScreenshotPath = join(tmpdir(), "dev-browser-debug.png");
+await page.screenshot({ path: debugScreenshotPath });
 console.log({
   url: page.url(),
   title: await page.title(),
   bodyText: await page.textContent("body").then((t) => t?.slice(0, 200)),
+  debugScreenshotPath,
 });
 
 await client.disconnect();
 ```
 
-Run it with:
+Run it with the same cross-platform invocation and delete the debug script and screenshot when finished:
 
 ```text
-npx tsx tmp/debug.ts
+node "PATH_TO_DEBUG_SCRIPT.mjs" "PATH_TO_INSTALLED_DEV_BROWSER"
 ```

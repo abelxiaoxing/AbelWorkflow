@@ -1,11 +1,8 @@
 import { formatReadinessLines, type EntrypointArgs } from "./entrypoint.js";
-import type { PackageManager } from "./runtime.js";
+import type { RuntimeCommand } from "./runtime.js";
 
 export interface RuntimePaths {
   skillDir: string;
-  tmpDir: string;
-  profileDir: string;
-  browserDataDir: string;
 }
 
 interface StandaloneServer {
@@ -22,13 +19,11 @@ interface ExtensionServer {
 
 export interface RunEntrypointDeps {
   runtimePaths: RuntimePaths;
-  mkdir: (path: string, options: { recursive: true }) => void;
   serveStandalone: (options: {
     port: number;
     host: string;
     headless: boolean;
     cdpPort: number;
-    profileDir: string;
   }) => Promise<StandaloneServer>;
   serveExtension: (options: { port: number; host: string }) => Promise<ExtensionServer>;
   registerShutdown: (stop: () => Promise<void>) => void;
@@ -40,16 +35,17 @@ export interface RunEntrypointDeps {
 
 export interface EnsurePlaywrightChromiumDeps {
   isInstalled: () => boolean;
-  findPackageManager: () => PackageManager | null;
+  installCommand: RuntimeCommand;
   runCommand: (command: string, args: string[]) => Promise<void>;
   log: (line: string) => void;
 }
 
 export interface PreflightStandaloneStartupDeps {
-  checkServer: (host: string, port: number) => Promise<{ ok: boolean; info?: { wsEndpoint?: string } }>;
+  checkServer: (host: string, port: number) => Promise<{
+    ok: boolean;
+    info?: { mode?: unknown; wsEndpoint?: unknown };
+  }>;
   isPortInUse: (port: number) => Promise<boolean>;
-  browserDataDir?: string;
-  recoverStaleBrowser?: (options: { cdpPort: number; browserDataDir: string }) => Promise<boolean>;
   log: (line: string) => void;
 }
 
@@ -58,23 +54,26 @@ export async function preflightStandaloneStartup(
   deps: PreflightStandaloneStartupDeps
 ): Promise<boolean> {
   const serverCheck = await deps.checkServer(args.host, args.port);
-  if (serverCheck.ok) {
+  if (
+    serverCheck.ok &&
+    serverCheck.info?.mode === "standalone" &&
+    typeof serverCheck.info.wsEndpoint === "string" &&
+    serverCheck.info.wsEndpoint.trim().length > 0
+  ) {
     deps.log(`Server already running on port ${args.port}`);
     return false;
   }
 
-  if (await deps.isPortInUse(args.cdpPort)) {
-    const recovered =
-      deps.browserDataDir && deps.recoverStaleBrowser
-        ? await deps.recoverStaleBrowser({
-            cdpPort: args.cdpPort,
-            browserDataDir: deps.browserDataDir,
-          })
-        : false;
+  if (await deps.isPortInUse(args.port)) {
+    throw new Error(
+      `HTTP port ${args.port} is already in use. Stop the existing service or use --port.`
+    );
+  }
 
-    if (!recovered && (await deps.isPortInUse(args.cdpPort))) {
-      throw new Error(`CDP port ${args.cdpPort} is already in use by another process`);
-    }
+  if (await deps.isPortInUse(args.cdpPort)) {
+    throw new Error(
+      `CDP port ${args.cdpPort} is already in use. Close the existing browser or use --cdp-port.`
+    );
   }
 
   return true;
@@ -87,19 +86,11 @@ export async function ensurePlaywrightChromium(deps: EnsurePlaywrightChromiumDep
   }
 
   deps.log("Playwright Chromium not found. Installing (this may take a minute)...");
-  const manager = deps.findPackageManager();
-  if (!manager) {
-    throw new Error("No package manager found (tried bun, pnpm, npm)");
-  }
-
-  deps.log(`Using ${manager.name} to install Playwright...`);
-  await deps.runCommand(manager.command, manager.args);
+  await deps.runCommand(deps.installCommand.command, deps.installCommand.args);
   deps.log("Chromium installed successfully.");
 }
 
 export async function runEntrypoint(args: EntrypointArgs, deps: RunEntrypointDeps) {
-  deps.mkdir(deps.runtimePaths.tmpDir, { recursive: true });
-
   if (args.mode === "extension") {
     const server = await deps.serveExtension({
       port: args.port,
@@ -120,8 +111,6 @@ export async function runEntrypoint(args: EntrypointArgs, deps: RunEntrypointDep
     return;
   }
 
-  deps.mkdir(deps.runtimePaths.profileDir, { recursive: true });
-
   const shouldStart = await deps.preflightStandalone?.();
   if (shouldStart === false) {
     return;
@@ -129,25 +118,34 @@ export async function runEntrypoint(args: EntrypointArgs, deps: RunEntrypointDep
 
   await deps.ensureBrowser?.();
 
-  const server = await deps.serveStandalone({
-    port: args.port,
-    host: args.host,
-    headless: args.headless,
-    cdpPort: args.cdpPort,
-    profileDir: deps.runtimePaths.profileDir,
+  let settleServer!: (server: StandaloneServer | undefined) => void;
+  const serverReady = new Promise<StandaloneServer | undefined>((resolve) => {
+    settleServer = resolve;
   });
+  deps.registerShutdown(async () => {
+    await (await serverReady)?.stop();
+  });
+  try {
+    const server = await deps.serveStandalone({
+      port: args.port,
+      host: args.host,
+      headless: args.headless,
+      cdpPort: args.cdpPort,
+    });
+    settleServer(server);
 
-  for (const line of formatReadinessLines({
-    mode: "standalone",
-    host: args.host,
-    port: args.port,
-    wsEndpoint: server.wsEndpoint,
-    tmpDir: deps.runtimePaths.tmpDir,
-    profileDir: deps.runtimePaths.profileDir,
-  })) {
-    deps.log(line);
+    for (const line of formatReadinessLines({
+      mode: "standalone",
+      host: args.host,
+      port: args.port,
+      wsEndpoint: server.wsEndpoint,
+    })) {
+      deps.log(line);
+    }
+
+    await deps.keepAlive();
+  } catch (error) {
+    settleServer(undefined);
+    throw error;
   }
-
-  deps.registerShutdown(() => server.stop());
-  await deps.keepAlive();
 }

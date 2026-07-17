@@ -3,10 +3,9 @@ import type {
   GetPageRequest,
   GetPageResponse,
   ListPagesResponse,
-  ServerInfoResponse,
   ViewportSize,
-} from "./types";
-import { getSnapshotScript } from "./snapshot/browser-script";
+} from "./types.js";
+import { getSnapshotScript } from "./snapshot/browser-script.js";
 
 /**
  * Options for waiting for page load
@@ -210,7 +209,7 @@ async function getPageLoadState(page: Page): Promise<PageLoadState> {
 /** Server mode information */
 export interface ServerInfo {
   wsEndpoint: string;
-  mode: "launch" | "extension";
+  mode: "standalone" | "extension";
   extensionConnected?: boolean;
 }
 
@@ -244,9 +243,46 @@ export interface DevBrowserClient {
   getServerInfo: () => Promise<ServerInfo>;
 }
 
+interface TargetLookupSession {
+  send(method: "Target.getTargetInfo"): Promise<{ targetInfo: { targetId: string } }>;
+  detach(): Promise<void>;
+}
+
+interface TargetLookupContext<TPage> {
+  pages(): TPage[];
+  newCDPSession(page: TPage): Promise<TargetLookupSession>;
+}
+
+interface TargetLookupBrowser<TPage> {
+  contexts(): Array<TargetLookupContext<TPage>>;
+}
+
+export async function findPageByTargetId<TPage>(
+  browser: TargetLookupBrowser<TPage>,
+  targetId: string
+): Promise<TPage | null> {
+  for (const context of browser.contexts()) {
+    for (const page of context.pages()) {
+      let session: TargetLookupSession | undefined;
+      try {
+        session = await context.newCDPSession(page);
+        const { targetInfo } = await session.send("Target.getTargetInfo");
+        if (targetInfo.targetId === targetId) return page;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        if (!message.includes("Target closed") && !message.includes("Session closed")) {
+          console.warn(`Unexpected error checking page target: ${message}`);
+        }
+      } finally {
+        await session?.detach().catch(() => undefined);
+      }
+    }
+  }
+  return null;
+}
+
 export async function connect(serverUrl = "http://localhost:9222"): Promise<DevBrowserClient> {
   let browser: Browser | null = null;
-  let wsEndpoint: string | null = null;
   let connectingPromise: Promise<Browser> | null = null;
 
   async function ensureConnected(): Promise<Browser> {
@@ -263,13 +299,7 @@ export async function connect(serverUrl = "http://localhost:9222"): Promise<DevB
     // Start new connection with mutex
     connectingPromise = (async () => {
       try {
-        // Fetch wsEndpoint from server
-        const res = await fetch(serverUrl);
-        if (!res.ok) {
-          throw new Error(`Server returned ${res.status}: ${await res.text()}`);
-        }
-        const info = (await res.json()) as ServerInfoResponse;
-        wsEndpoint = info.wsEndpoint;
+        const { wsEndpoint } = await fetchServerInfo(serverUrl);
 
         // Connect to the browser via CDP
         browser = await chromium.connectOverCDP(wsEndpoint);
@@ -280,37 +310,6 @@ export async function connect(serverUrl = "http://localhost:9222"): Promise<DevB
     })();
 
     return connectingPromise;
-  }
-
-  // Find page by CDP targetId - more reliable than JS globals
-  async function findPageByTargetId(b: Browser, targetId: string): Promise<Page | null> {
-    for (const context of b.contexts()) {
-      for (const page of context.pages()) {
-        let cdpSession;
-        try {
-          cdpSession = await context.newCDPSession(page);
-          const { targetInfo } = await cdpSession.send("Target.getTargetInfo");
-          if (targetInfo.targetId === targetId) {
-            return page;
-          }
-        } catch (err) {
-          // Only ignore "target closed" errors, log unexpected ones
-          const msg = err instanceof Error ? err.message : String(err);
-          if (!msg.includes("Target closed") && !msg.includes("Session closed")) {
-            console.warn(`Unexpected error checking page target: ${msg}`);
-          }
-        } finally {
-          if (cdpSession) {
-            try {
-              await cdpSession.detach();
-            } catch {
-              // Ignore detach errors - session may already be closed
-            }
-          }
-        }
-      }
-    }
-    return null;
   }
 
   // Helper to get a page by name (used by multiple methods)
@@ -326,47 +325,13 @@ export async function connect(serverUrl = "http://localhost:9222"): Promise<DevB
       throw new Error(`Failed to get page: ${await res.text()}`);
     }
 
-    const pageInfo = (await res.json()) as GetPageResponse & { url?: string };
+    const pageInfo = (await res.json()) as GetPageResponse;
     const { targetId } = pageInfo;
 
     // Connect to browser
     const b = await ensureConnected();
 
-    // Check if we're in extension mode
-    const infoRes = await fetch(serverUrl);
-    const info = (await infoRes.json()) as { mode?: string };
-    const isExtensionMode = info.mode === "extension";
-
-    if (isExtensionMode) {
-      // In extension mode, DON'T use findPageByTargetId as it corrupts page state
-      // Instead, find page by URL or use the only available page
-      const allPages = b.contexts().flatMap((ctx) => ctx.pages());
-
-      if (allPages.length === 0) {
-        throw new Error(`No pages available in browser`);
-      }
-
-      if (allPages.length === 1) {
-        return allPages[0]!;
-      }
-
-      // Multiple pages - try to match by URL if available
-      if (pageInfo.url) {
-        const matchingPage = allPages.find((p) => p.url() === pageInfo.url);
-        if (matchingPage) {
-          return matchingPage;
-        }
-      }
-
-      // Fall back to first page
-      if (!allPages[0]) {
-        throw new Error(`No pages available in browser`);
-      }
-      return allPages[0];
-    }
-
-    // In launch mode, use the original targetId-based lookup
-    const page = await findPageByTargetId(b, targetId);
+    const page = await waitForExactPage(b, targetId);
     if (!page) {
       throw new Error(`Page "${name}" not found in browser contexts`);
     }
@@ -455,20 +420,51 @@ export async function connect(serverUrl = "http://localhost:9222"): Promise<DevB
     },
 
     async getServerInfo(): Promise<ServerInfo> {
-      const res = await fetch(serverUrl);
-      if (!res.ok) {
-        throw new Error(`Server returned ${res.status}: ${await res.text()}`);
-      }
-      const info = (await res.json()) as {
-        wsEndpoint: string;
-        mode?: string;
-        extensionConnected?: boolean;
-      };
-      return {
-        wsEndpoint: info.wsEndpoint,
-        mode: (info.mode as "launch" | "extension") ?? "launch",
-        extensionConnected: info.extensionConnected,
-      };
+      return fetchServerInfo(serverUrl);
     },
   };
+}
+
+async function fetchServerInfo(serverUrl: string): Promise<ServerInfo> {
+  const res = await fetch(serverUrl);
+  if (!res.ok) {
+    throw new Error(`Server returned ${res.status}: ${await res.text()}`);
+  }
+  return parseServerInfo(await res.json());
+}
+
+function parseServerInfo(value: unknown): ServerInfo {
+  const info =
+    typeof value === "object" && value !== null
+      ? (value as Record<string, unknown>)
+      : {};
+  const mode = Object.hasOwn(info, "mode") ? info.mode : "standalone";
+  if (mode !== "standalone" && mode !== "extension") {
+    throw new Error(
+      `Invalid dev-browser server mode: expected "standalone" or "extension", received ${JSON.stringify(mode)}`
+    );
+  }
+  if (typeof info.wsEndpoint !== "string" || info.wsEndpoint.trim().length === 0) {
+    throw new Error(
+      `Invalid dev-browser wsEndpoint: expected a non-empty string, received ${JSON.stringify(info.wsEndpoint)}`
+    );
+  }
+  return {
+    wsEndpoint: info.wsEndpoint,
+    mode,
+    extensionConnected: info.extensionConnected as boolean | undefined,
+  };
+}
+
+async function waitForExactPage(browser: Browser, targetId: string): Promise<Page | null> {
+  const deadline = Date.now() + 5000;
+  do {
+    const page = await findPageByTargetId(
+      browser as unknown as TargetLookupBrowser<Page>,
+      targetId
+    );
+    if (page) return page;
+    if (Date.now() >= deadline) return null;
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  } while (true);
 }

@@ -13,8 +13,6 @@ export interface StandaloneReadinessInfo {
   host: string;
   port: number;
   wsEndpoint: string;
-  tmpDir: string;
-  profileDir: string;
 }
 
 export interface ExtensionReadinessInfo {
@@ -115,8 +113,6 @@ export function formatReadinessLines(info: ReadinessInfo): string[] {
       "Dev browser server started",
       `  HTTP: ${formatHttpUrl(info.host, info.port)}`,
       `  WebSocket: ${info.wsEndpoint}`,
-      `  Tmp directory: ${info.tmpDir}`,
-      `  Profile directory: ${info.profileDir}`,
       "",
       "Ready",
     ];

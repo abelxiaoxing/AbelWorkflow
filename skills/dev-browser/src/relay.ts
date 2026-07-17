@@ -1,23 +1,25 @@
-/**
- * CDP Relay Server for Chrome Extension mode
- *
- * This server acts as a bridge between Playwright clients and a Chrome extension.
- * Instead of launching a browser, it waits for the extension to connect and
- * forwards CDP commands/events between them.
- */
-
-import { Hono } from "hono";
 import { serve } from "@hono/node-server";
 import { createNodeWebSocket } from "@hono/node-ws";
+import { Hono } from "hono";
 import type { WSContext } from "hono/ws";
 
-// ============================================================================
-// Types
-// ============================================================================
+import { formatHttpUrl, formatWsUrl } from "./entrypoint.js";
+import {
+  PageBackendError,
+  createPageApi,
+  type PageBackend,
+  type PageDescriptor,
+} from "./page-api.js";
+import {
+  createTargetRegistry,
+  type ConnectedTarget,
+  type TargetInfo,
+} from "./target-registry.js";
 
 export interface RelayOptions {
   port?: number;
   host?: string;
+  targetTimeoutMs?: number;
 }
 
 export interface RelayServer {
@@ -26,44 +28,53 @@ export interface RelayServer {
   stop(): Promise<void>;
 }
 
-interface TargetInfo {
-  targetId: string;
-  type: string;
-  title: string;
-  url: string;
-  attached: boolean;
+export const WEBSOCKET_POLICY_VIOLATION_CODE = 1008;
+export const CDP_ORIGIN_POLICY_REASON = "CDP endpoint requires an originless client";
+export const EXTENSION_ORIGIN_POLICY_REASON =
+  "Extension endpoint requires originless or chrome-extension client";
+
+export function isTrustedCdpOrigin(origin: string | undefined): boolean {
+  return origin === undefined;
 }
 
-interface ConnectedTarget {
-  sessionId: string;
-  targetId: string;
-  targetInfo: TargetInfo;
+export function isTrustedExtensionOrigin(origin: string | undefined): boolean {
+  if (origin === undefined) return true;
+  try {
+    const url = new URL(origin);
+    return (
+      url.protocol === "chrome-extension:" &&
+      /^[a-p]{32}$/.test(url.hostname) &&
+      (url.pathname === "" || url.pathname === "/") &&
+      url.username === "" &&
+      url.password === "" &&
+      url.port === "" &&
+      url.search === "" &&
+      url.hash === ""
+    );
+  } catch {
+    return false;
+  }
 }
 
 interface PlaywrightClient {
   id: string;
   ws: WSContext;
-  knownTargets: Set<string>; // targetIds this client has received attachedToTarget for
+  knownTargets: Set<string>;
+  sessionAliases: Map<string, SessionAlias>;
 }
 
-// Message types for extension communication
-interface ExtensionCommandMessage {
-  id: number;
-  method: "forwardCDPCommand";
-  params: {
-    method: string;
-    params?: Record<string, unknown>;
-    sessionId?: string;
-  };
+interface SessionAlias {
+  physicalSessionId: string;
+  parentSessionId?: string;
 }
 
-interface ExtensionResponseMessage {
+interface ExtensionResponse {
   id: number;
   result?: unknown;
   error?: string;
 }
 
-interface ExtensionEventMessage {
+interface ExtensionEvent {
   method: "forwardCDPEvent";
   params: {
     method: string;
@@ -72,12 +83,6 @@ interface ExtensionEventMessage {
   };
 }
 
-type ExtensionMessage =
-  | ExtensionResponseMessage
-  | ExtensionEventMessage
-  | { method: "log"; params: { level: string; args: string[] } };
-
-// CDP message types
 interface CDPCommand {
   id: number;
   method: string;
@@ -85,149 +90,278 @@ interface CDPCommand {
   sessionId?: string;
 }
 
-interface CDPResponse {
-  id: number;
+interface CDPMessage {
+  id?: number;
+  method?: string;
   sessionId?: string;
+  params?: Record<string, unknown>;
   result?: unknown;
   error?: { message: string };
 }
 
-interface CDPEvent {
-  method: string;
-  sessionId?: string;
-  params?: Record<string, unknown>;
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-// ============================================================================
-// Relay Server Implementation
-// ============================================================================
+function isCdpCommand(value: unknown): value is CDPCommand {
+  return isRecord(value)
+    && typeof value.id === "number"
+    && Number.isFinite(value.id)
+    && typeof value.method === "string"
+    && (value.params === undefined || isRecord(value.params))
+    && (value.sessionId === undefined || typeof value.sessionId === "string");
+}
+
+type TargetRegistry = ReturnType<typeof createTargetRegistry>;
+
+export function createExtensionPageBackend({
+  registry,
+  isConnected,
+  sendCommand,
+  timeoutMs,
+}: {
+  registry: TargetRegistry;
+  isConnected: () => boolean;
+  sendCommand: (method: string, params?: Record<string, unknown>) => Promise<unknown>;
+  timeoutMs: number;
+}): PageBackend {
+  const pending = new Map<string, Promise<PageDescriptor>>();
+
+  async function create(name: string): Promise<PageDescriptor> {
+    if (!isConnected()) throw new PageBackendError(503, "extension not connected");
+    const result = (await sendCommand("Target.createTarget", { url: "about:blank" })) as {
+      targetId?: unknown;
+    };
+    if (typeof result?.targetId !== "string" || result.targetId.length === 0) {
+      throw new PageBackendError(502, "extension returned an invalid targetId");
+    }
+    if (!isConnected()) {
+      throw new PageBackendError(503, "extension connection closed");
+    }
+
+    let target: ConnectedTarget;
+    try {
+      target = await registry.waitForAttach(result.targetId, timeoutMs);
+    } catch (error) {
+      if (error instanceof PageBackendError) throw error;
+      const timeout = new PageBackendError(504, errorMessage(error));
+      try {
+        await sendCommand("Target.closeTarget", { targetId: result.targetId });
+      } catch {}
+      throw timeout;
+    }
+    registry.bindName(name, target.targetId);
+    return { name, targetId: target.targetId };
+  }
+
+  return {
+    async list() {
+      return registry.list();
+    },
+
+    async getOrCreate(name) {
+      const existing = registry.getByName(name);
+      if (existing) return { name, targetId: existing.targetId };
+
+      const inFlight = pending.get(name);
+      if (inFlight) return inFlight;
+      const creation = create(name);
+      pending.set(name, creation);
+      try {
+        return await creation;
+      } finally {
+        if (pending.get(name) === creation) pending.delete(name);
+      }
+    },
+
+    async close(name) {
+      const target = registry.getByName(name);
+      if (!target) return false;
+      if (!isConnected()) throw new PageBackendError(503, "extension not connected");
+
+      const result = (await sendCommand("Target.closeTarget", {
+        targetId: target.targetId,
+      })) as { success?: unknown };
+      if (result?.success !== true) {
+        throw new PageBackendError(502, `extension failed to close target ${target.targetId}`);
+      }
+      if (!isConnected()) {
+        throw new PageBackendError(503, "extension connection closed");
+      }
+      try {
+        await registry.waitForDetach(target.targetId, timeoutMs);
+      } catch (error) {
+        if (error instanceof PageBackendError) throw error;
+        throw new PageBackendError(504, errorMessage(error));
+      }
+      return true;
+    },
+  };
+}
 
 export async function serveRelay(options: RelayOptions = {}): Promise<RelayServer> {
-  const port = options.port ?? 9222;
+  const requestedPort = options.port ?? 9222;
   const host = options.host ?? "127.0.0.1";
-
-  // State
-  const connectedTargets = new Map<string, ConnectedTarget>();
-  const namedPages = new Map<string, string>(); // name -> sessionId
+  const targetTimeoutMs = options.targetTimeoutMs ?? 5000;
+  const wsEndpoint = formatWsUrl(host, requestedPort, "/cdp");
+  const registry = createTargetRegistry();
   const playwrightClients = new Map<string, PlaywrightClient>();
-  let extensionWs: WSContext | null = null;
-
-  // Pending requests to extension
-  const extensionPendingRequests = new Map<
+  const extensionPending = new Map<
     number,
-    {
-      resolve: (result: unknown) => void;
-      reject: (error: Error) => void;
-    }
+    { resolve: (result: unknown) => void; reject: (error: Error) => void }
   >();
+  let extensionWs: WSContext | null = null;
   let extensionMessageId = 0;
-
-  // ============================================================================
-  // Helper Functions
-  // ============================================================================
+  let virtualSessionId = 0;
 
   function log(...args: unknown[]) {
     console.log("[relay]", ...args);
   }
 
-  function sendToPlaywright(message: CDPResponse | CDPEvent, clientId?: string) {
-    const messageStr = JSON.stringify(message);
-
-    if (clientId) {
-      const client = playwrightClients.get(clientId);
-      if (client) {
-        client.ws.send(messageStr);
-      }
-    } else {
-      // Broadcast to all clients
-      for (const client of playwrightClients.values()) {
-        client.ws.send(messageStr);
-      }
-    }
+  function isPlaywrightClientOwner(client: PlaywrightClient): boolean {
+    return playwrightClients.get(client.id) === client;
   }
 
-  /**
-   * Send Target.attachedToTarget event with deduplication.
-   * Tracks which targets each client has seen to prevent "Duplicate target" errors.
-   */
-  function sendAttachedToTarget(
-    target: ConnectedTarget,
-    clientId?: string,
-    waitingForDebugger = false
-  ) {
-    const event: CDPEvent = {
+  function sendToPlaywright(message: CDPMessage, client?: PlaywrightClient) {
+    const encoded = JSON.stringify(message);
+    if (client) {
+      if (isPlaywrightClientOwner(client)) client.ws.send(encoded);
+      return;
+    }
+    for (const client of playwrightClients.values()) client.ws.send(encoded);
+  }
+
+  function sendAttached(target: ConnectedTarget, client?: PlaywrightClient) {
+    const event: CDPMessage = {
       method: "Target.attachedToTarget",
       params: {
         sessionId: target.sessionId,
         targetInfo: { ...target.targetInfo, attached: true },
-        waitingForDebugger,
+        waitingForDebugger: false,
       },
     };
+    const clients = client ? [client] : playwrightClients.values();
+    for (const owner of clients) {
+      if (!isPlaywrightClientOwner(owner) || owner.knownTargets.has(target.targetId)) continue;
+      owner.knownTargets.add(target.targetId);
+      owner.ws.send(JSON.stringify(event));
+    }
+  }
 
-    if (clientId) {
-      const client = playwrightClients.get(clientId);
-      if (client && !client.knownTargets.has(target.targetId)) {
-        client.knownTargets.add(target.targetId);
-        client.ws.send(JSON.stringify(event));
-      }
-    } else {
-      // Broadcast to all clients that don't know about this target yet
-      for (const client of playwrightClients.values()) {
-        if (!client.knownTargets.has(target.targetId)) {
-          client.knownTargets.add(target.targetId);
-          client.ws.send(JSON.stringify(event));
-        }
+  function createSessionAlias(
+    client: PlaywrightClient,
+    physicalSessionId: string,
+    parentSessionId?: string
+  ): string {
+    let sessionId: string;
+    do {
+      sessionId = `dev-browser-virtual-${++virtualSessionId}`;
+    } while (registry.getBySessionId(sessionId) || client.sessionAliases.has(sessionId));
+    client.sessionAliases.set(sessionId, { physicalSessionId, parentSessionId });
+    return sessionId;
+  }
+
+  function resolveSessionId(client: PlaywrightClient, sessionId?: string): string | undefined {
+    return sessionId
+      ? (client.sessionAliases.get(sessionId)?.physicalSessionId ?? sessionId)
+      : undefined;
+  }
+
+  function sendSessionEvent(method: string, params: Record<string, unknown> | undefined, sessionId?: string) {
+    for (const client of playwrightClients.values()) {
+      client.ws.send(JSON.stringify({ method, params, sessionId } satisfies CDPMessage));
+      if (!sessionId) continue;
+      for (const [alias, binding] of client.sessionAliases) {
+        if (binding.physicalSessionId !== sessionId) continue;
+        client.ws.send(JSON.stringify({ method, params, sessionId: alias } satisfies CDPMessage));
       }
     }
   }
 
-  async function sendToExtension({
-    method,
-    params,
-    timeout = 30000,
-  }: {
-    method: string;
-    params?: Record<string, unknown>;
-    timeout?: number;
-  }): Promise<unknown> {
-    if (!extensionWs) {
-      throw new Error("Extension not connected");
+  function sendDetached(
+    physicalSessionId: string,
+    params: Record<string, unknown>,
+    target?: ConnectedTarget
+  ) {
+    const physicalParams = { ...params, sessionId: physicalSessionId };
+    for (const client of playwrightClients.values()) {
+      if (target) client.knownTargets.delete(target.targetId);
+      client.ws.send(
+        JSON.stringify({ method: "Target.detachedFromTarget", params: physicalParams } satisfies CDPMessage)
+      );
+      for (const [alias, binding] of client.sessionAliases) {
+        if (binding.physicalSessionId !== physicalSessionId) continue;
+        client.sessionAliases.delete(alias);
+        client.ws.send(
+          JSON.stringify({
+            method: "Target.detachedFromTarget",
+            params: { ...params, sessionId: alias },
+            sessionId: binding.parentSessionId,
+          } satisfies CDPMessage)
+        );
+      }
     }
+  }
 
+  function rejectExtensionPending(error: Error) {
+    for (const pending of extensionPending.values()) pending.reject(error);
+    extensionPending.clear();
+  }
+
+  function closePlaywrightClients(reason: string) {
+    for (const client of playwrightClients.values()) client.ws.close(1000, reason);
+    playwrightClients.clear();
+  }
+
+  function disconnectExtension(error: PageBackendError) {
+    rejectExtensionPending(error);
+    registry.disconnect(error);
+    extensionWs = null;
+    closePlaywrightClients(error.message);
+  }
+
+  async function sendToExtension(
+    method: string,
+    params?: Record<string, unknown>,
+    timeoutMs = 30_000
+  ): Promise<unknown> {
+    const ws = extensionWs;
+    if (!ws) throw new PageBackendError(503, "extension not connected");
     const id = ++extensionMessageId;
-    const message = { id, method, params };
-
-    extensionWs.send(JSON.stringify(message));
+    ws.send(JSON.stringify({ id, method, params }));
 
     return new Promise((resolve, reject) => {
-      const timeoutId = setTimeout(() => {
-        extensionPendingRequests.delete(id);
-        reject(new Error(`Extension request timeout after ${timeout}ms: ${method}`));
-      }, timeout);
-
-      extensionPendingRequests.set(id, {
+      const timer = setTimeout(() => {
+        extensionPending.delete(id);
+        reject(new Error(`Extension request timeout after ${timeoutMs}ms: ${method}`));
+      }, timeoutMs);
+      extensionPending.set(id, {
         resolve: (result) => {
-          clearTimeout(timeoutId);
+          clearTimeout(timer);
           resolve(result);
         },
         reject: (error) => {
-          clearTimeout(timeoutId);
+          clearTimeout(timer);
           reject(error);
         },
       });
     });
   }
 
-  async function routeCdpCommand({
-    method,
-    params,
-    sessionId,
-  }: {
-    method: string;
-    params?: Record<string, unknown>;
-    sessionId?: string;
-  }): Promise<unknown> {
-    // Handle some CDP commands locally
+  const sendCdpCommand = (method: string, params?: Record<string, unknown>) =>
+    sendToExtension("forwardCDPCommand", { method, params });
+  const pageBackend = createExtensionPageBackend({
+    registry,
+    isConnected: () => extensionWs !== null,
+    sendCommand: sendCdpCommand,
+    timeoutMs: targetTimeoutMs,
+  });
+
+  async function routeCdpCommand(
+    client: PlaywrightClient,
+    { method, params, sessionId }: Omit<CDPCommand, "id">
+  ): Promise<unknown> {
+    const physicalSessionId = resolveSessionId(client, sessionId);
     switch (method) {
       case "Browser.getVersion":
         return {
@@ -237,495 +371,265 @@ export async function serveRelay(options: RelayOptions = {}): Promise<RelayServe
           userAgent: "dev-browser-relay/1.0.0",
           jsVersion: "V8",
         };
-
       case "Browser.setDownloadBehavior":
-        return {};
-
-      case "Target.setAutoAttach":
-        if (sessionId) {
-          break; // Forward to extension for child frames
-        }
-        return {};
-
       case "Target.setDiscoverTargets":
         return {};
-
+      case "Target.setAutoAttach":
+        if (!sessionId) return {};
+        break;
       case "Target.attachToBrowserTarget":
-        // Browser-level session - return a fake session since we only proxy tabs
         return { sessionId: "browser" };
-
-      case "Target.detachFromTarget":
-        // If detaching from our fake "browser" session, just return success
-        if (sessionId === "browser" || params?.sessionId === "browser") {
+      case "Target.detachFromTarget": {
+        const detachedSessionId = params?.sessionId;
+        if (typeof detachedSessionId === "string" && client.sessionAliases.delete(detachedSessionId)) {
           return {};
         }
-        // Otherwise forward to extension
+        if (sessionId === "browser" || params?.sessionId === "browser") return {};
         break;
-
+      }
       case "Target.attachToTarget": {
-        const targetId = params?.targetId as string;
-        if (!targetId) {
-          throw new Error("targetId is required for Target.attachToTarget");
-        }
-
-        for (const target of connectedTargets.values()) {
-          if (target.targetId === targetId) {
-            return { sessionId: target.sessionId };
-          }
-        }
-
-        throw new Error(`Target ${targetId} not found in connected targets`);
+        const targetId = params?.targetId;
+        if (typeof targetId !== "string") throw new Error("targetId is required");
+        const target = registry.getByTargetId(targetId);
+        if (!target) throw new Error(`Target ${targetId} not found`);
+        return {
+          sessionId: createSessionAlias(client, target.sessionId, sessionId),
+        };
       }
-
       case "Target.getTargetInfo": {
-        const targetId = params?.targetId as string;
-
-        if (targetId) {
-          for (const target of connectedTargets.values()) {
-            if (target.targetId === targetId) {
-              return { targetInfo: target.targetInfo };
-            }
-          }
-        }
-
-        if (sessionId) {
-          const target = connectedTargets.get(sessionId);
-          if (target) {
-            return { targetInfo: target.targetInfo };
-          }
-        }
-
-        // Return first target if no specific one requested
-        const firstTarget = Array.from(connectedTargets.values())[0];
-        return { targetInfo: firstTarget?.targetInfo };
+        const targetId = params?.targetId;
+        const target =
+          typeof targetId === "string"
+            ? registry.getByTargetId(targetId)
+            : physicalSessionId
+              ? registry.getBySessionId(physicalSessionId)
+              : undefined;
+        return { targetInfo: target?.targetInfo };
       }
-
       case "Target.getTargets":
         return {
-          targetInfos: Array.from(connectedTargets.values()).map((t) => ({
-            ...t.targetInfo,
+          targetInfos: registry.targets().map(({ targetInfo }) => ({
+            ...targetInfo,
             attached: true,
           })),
         };
-
       case "Target.createTarget":
       case "Target.closeTarget":
-        // Forward to extension
-        return await sendToExtension({
-          method: "forwardCDPCommand",
-          params: { method, params },
-        });
+        return sendCdpCommand(method, params);
     }
 
-    // Forward all other commands to extension
-    return await sendToExtension({
-      method: "forwardCDPCommand",
-      params: { sessionId, method, params },
+    return sendToExtension("forwardCDPCommand", {
+      sessionId: physicalSessionId,
+      method,
+      params,
     });
   }
 
-  // ============================================================================
-  // HTTP/WebSocket Server
-  // ============================================================================
-
   const app = new Hono();
   const { injectWebSocket, upgradeWebSocket } = createNodeWebSocket({ app });
-
-  // Health check / server info
-  app.get("/", (c) => {
-    return c.json({
-      wsEndpoint: `ws://${host}:${port}/cdp`,
+  app.get("/", (c) =>
+    c.json({
+      wsEndpoint,
       extensionConnected: extensionWs !== null,
-      mode: "extension",
-    });
-  });
-
-  // List named pages
-  app.get("/pages", (c) => {
-    return c.json({
-      pages: Array.from(namedPages.keys()),
-    });
-  });
-
-  // Get or create a named page
-  app.post("/pages", async (c) => {
-    const body = await c.req.json();
-    const name = body.name as string;
-
-    if (!name) {
-      return c.json({ error: "name is required" }, 400);
-    }
-
-    // Check if page already exists by name
-    const existingSessionId = namedPages.get(name);
-    if (existingSessionId) {
-      const target = connectedTargets.get(existingSessionId);
-      if (target) {
-        // Activate the tab so it becomes the active tab
-        await sendToExtension({
-          method: "forwardCDPCommand",
-          params: {
-            method: "Target.activateTarget",
-            params: { targetId: target.targetId },
-          },
-        });
-        return c.json({
-          wsEndpoint: `ws://${host}:${port}/cdp`,
-          name,
-          targetId: target.targetId,
-          url: target.targetInfo.url,
-        });
-      }
-      // Session no longer valid, remove it
-      namedPages.delete(name);
-    }
-
-    // Create a new tab
-    if (!extensionWs) {
-      return c.json({ error: "Extension not connected" }, 503);
-    }
-
-    try {
-      const result = (await sendToExtension({
-        method: "forwardCDPCommand",
-        params: { method: "Target.createTarget", params: { url: "about:blank" } },
-      })) as { targetId: string };
-
-      // Wait for Target.attachedToTarget event to register the new target
-      await new Promise((resolve) => setTimeout(resolve, 200));
-
-      // Find and name the new target
-      for (const [sessionId, target] of connectedTargets) {
-        if (target.targetId === result.targetId) {
-          namedPages.set(name, sessionId);
-          // Activate the tab so it becomes the active tab
-          await sendToExtension({
-            method: "forwardCDPCommand",
-            params: {
-              method: "Target.activateTarget",
-              params: { targetId: target.targetId },
-            },
-          });
-          return c.json({
-            wsEndpoint: `ws://${host}:${port}/cdp`,
-            name,
-            targetId: target.targetId,
-            url: target.targetInfo.url,
-          });
-        }
-      }
-
-      throw new Error("Target created but not found in registry");
-    } catch (err) {
-      log("Error creating tab:", err);
-      return c.json({ error: (err as Error).message }, 500);
-    }
-  });
-
-  // Delete a named page (removes the name, doesn't close the tab)
-  app.delete("/pages/:name", (c) => {
-    const name = c.req.param("name");
-    const deleted = namedPages.delete(name);
-    return c.json({ success: deleted });
-  });
-
-  // ============================================================================
-  // Playwright Client WebSocket
-  // ============================================================================
+      mode: "extension" as const,
+    })
+  );
+  app.route("/", createPageApi({ backend: pageBackend, wsEndpoint }));
 
   app.get(
     "/cdp/:clientId?",
     upgradeWebSocket((c) => {
       const clientId =
-        c.req.param("clientId") || `client-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-
+        c.req.param("clientId") ?? `client-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      const trustedOrigin = isTrustedCdpOrigin(c.req.header("origin"));
       return {
         onOpen(_event, ws) {
+          if (!trustedOrigin) {
+            ws.close(WEBSOCKET_POLICY_VIOLATION_CODE, CDP_ORIGIN_POLICY_REASON);
+            return;
+          }
           if (playwrightClients.has(clientId)) {
-            log(`Rejecting duplicate client ID: ${clientId}`);
             ws.close(1000, "Client ID already connected");
             return;
           }
-
-          playwrightClients.set(clientId, { id: clientId, ws, knownTargets: new Set() });
-          log(`Playwright client connected: ${clientId}`);
+          playwrightClients.set(clientId, {
+            id: clientId,
+            ws,
+            knownTargets: new Set(),
+            sessionAliases: new Map(),
+          });
         },
-
-        async onMessage(event, _ws) {
-          let message: CDPCommand;
-
+        async onMessage(event, ws) {
+          if (!trustedOrigin) return;
+          let parsed: unknown;
           try {
-            message = JSON.parse(event.data.toString());
+            parsed = JSON.parse(event.data.toString());
           } catch {
             return;
           }
-
-          const { id, sessionId, method, params } = message;
-
+          if (!isCdpCommand(parsed)) return;
+          const command = parsed;
+          const { id, method, params, sessionId } = command;
+          const client = playwrightClients.get(clientId);
+          if (!client || client.ws !== ws) return;
           if (!extensionWs) {
-            sendToPlaywright(
-              {
-                id,
-                sessionId,
-                error: { message: "Extension not connected" },
-              },
-              clientId
-            );
+            sendToPlaywright({ id, sessionId, error: { message: "extension not connected" } }, client);
             return;
           }
-
           try {
-            const result = await routeCdpCommand({ method, params, sessionId });
-
-            // After Target.setAutoAttach, send attachedToTarget for existing targets
-            // Uses deduplication to prevent "Duplicate target" errors
+            const result = await routeCdpCommand(client, { method, params, sessionId });
             if (method === "Target.setAutoAttach" && !sessionId) {
-              for (const target of connectedTargets.values()) {
-                sendAttachedToTarget(target, clientId);
-              }
+              for (const target of registry.targets()) sendAttached(target, client);
             }
-
-            // After Target.setDiscoverTargets, send targetCreated events
-            if (
-              method === "Target.setDiscoverTargets" &&
-              (params as { discover?: boolean })?.discover
-            ) {
-              for (const target of connectedTargets.values()) {
+            if (method === "Target.setDiscoverTargets" && params?.discover === true) {
+              for (const target of registry.targets()) {
                 sendToPlaywright(
                   {
                     method: "Target.targetCreated",
-                    params: {
-                      targetInfo: { ...target.targetInfo, attached: true },
-                    },
+                    params: { targetInfo: { ...target.targetInfo, attached: true } },
                   },
-                  clientId
+                  client
                 );
               }
             }
-
-            // After Target.attachToTarget, send attachedToTarget event (with deduplication)
-            if (
-              method === "Target.attachToTarget" &&
-              (result as { sessionId?: string })?.sessionId
-            ) {
-              const targetId = params?.targetId as string;
-              const target = Array.from(connectedTargets.values()).find(
-                (t) => t.targetId === targetId
-              );
-              if (target) {
-                sendAttachedToTarget(target, clientId);
+            if (method === "Target.attachToTarget") {
+              const targetId = params?.targetId;
+              if (typeof targetId === "string") {
+                const target = registry.getByTargetId(targetId);
+                if (target) sendAttached(target, client);
               }
             }
-
-            sendToPlaywright({ id, sessionId, result }, clientId);
-          } catch (e) {
-            log("Error handling CDP command:", method, e);
-            sendToPlaywright(
-              {
-                id,
-                sessionId,
-                error: { message: (e as Error).message },
-              },
-              clientId
-            );
+            sendToPlaywright({ id, sessionId, result }, client);
+          } catch (error) {
+            sendToPlaywright({ id, sessionId, error: { message: errorMessage(error) } }, client);
           }
         },
-
-        onClose() {
-          playwrightClients.delete(clientId);
-          log(`Playwright client disconnected: ${clientId}`);
-        },
-
-        onError(event) {
-          log(`Playwright WebSocket error [${clientId}]:`, event);
+        onClose(_event, ws) {
+          if (!trustedOrigin) return;
+          const client = playwrightClients.get(clientId);
+          if (client?.ws === ws) playwrightClients.delete(clientId);
         },
       };
     })
   );
 
-  // ============================================================================
-  // Extension WebSocket
-  // ============================================================================
-
   app.get(
     "/extension",
-    upgradeWebSocket(() => {
+    upgradeWebSocket((c) => {
+      const trustedOrigin = isTrustedExtensionOrigin(c.req.header("origin"));
       return {
         onOpen(_event, ws) {
-          if (extensionWs) {
-            log("Closing existing extension connection");
-            extensionWs.close(4001, "Extension Replaced");
-
-            // Clear state
-            connectedTargets.clear();
-            namedPages.clear();
-            for (const pending of extensionPendingRequests.values()) {
-              pending.reject(new Error("Extension connection replaced"));
-            }
-            extensionPendingRequests.clear();
+          if (!trustedOrigin) {
+            ws.close(WEBSOCKET_POLICY_VIOLATION_CODE, EXTENSION_ORIGIN_POLICY_REASON);
+            return;
           }
-
+          if (extensionWs) {
+            const old = extensionWs;
+            disconnectExtension(new PageBackendError(503, "extension connection replaced"));
+            old.close(4001, "Extension replaced");
+          }
           extensionWs = ws;
           log("Extension connected");
         },
-
-        async onMessage(event, ws) {
-          let message: ExtensionMessage;
-
+        onMessage(event, ws) {
+          if (!trustedOrigin) return;
+          if (extensionWs !== ws) return;
+          let parsed: unknown;
           try {
-            message = JSON.parse(event.data.toString());
+            parsed = JSON.parse(event.data.toString());
           } catch {
             ws.close(1000, "Invalid JSON");
             return;
           }
+          if (!isRecord(parsed)) {
+            ws.close(1003, "Invalid extension message");
+            return;
+          }
+          const message = parsed as ExtensionResponse | ExtensionEvent | {
+            method: "log";
+            params: unknown;
+          };
 
-          // Handle response to our request
-          if ("id" in message && typeof message.id === "number") {
-            const pending = extensionPendingRequests.get(message.id);
-            if (!pending) {
-              log("Unexpected response with id:", message.id);
-              return;
-            }
-
-            extensionPendingRequests.delete(message.id);
-
-            if ((message as ExtensionResponseMessage).error) {
-              pending.reject(new Error((message as ExtensionResponseMessage).error));
-            } else {
-              pending.resolve((message as ExtensionResponseMessage).result);
-            }
+          if ("id" in message) {
+            if (typeof message.id !== "number") return;
+            const pending = extensionPending.get(message.id);
+            if (!pending) return;
+            extensionPending.delete(message.id);
+            if (message.error) pending.reject(new PageBackendError(502, message.error));
+            else pending.resolve(message.result);
             return;
           }
 
-          // Handle log messages
-          if ("method" in message && message.method === "log") {
-            const { level, args } = message.params;
-            console.log(`[extension:${level}]`, ...args);
+          if (message.method !== "forwardCDPEvent") return;
+          const { method, params, sessionId } = message.params;
+          if (method === "Target.attachedToTarget") {
+            const attached = params as unknown as {
+              sessionId: string;
+              targetInfo: TargetInfo;
+            };
+            const target: ConnectedTarget = {
+              sessionId: attached.sessionId,
+              targetId: attached.targetInfo.targetId,
+              targetInfo: attached.targetInfo,
+            };
+            registry.attach(target);
+            sendAttached(target);
             return;
           }
-
-          // Handle CDP events from extension
-          if ("method" in message && message.method === "forwardCDPEvent") {
-            const eventMsg = message as ExtensionEventMessage;
-            const { method, params, sessionId } = eventMsg.params;
-
-            // Handle target lifecycle events
-            if (method === "Target.attachedToTarget") {
-              const targetParams = params as {
-                sessionId: string;
-                targetInfo: TargetInfo;
-              };
-
-              const target: ConnectedTarget = {
-                sessionId: targetParams.sessionId,
-                targetId: targetParams.targetInfo.targetId,
-                targetInfo: targetParams.targetInfo,
-              };
-              connectedTargets.set(targetParams.sessionId, target);
-
-              log(`Target attached: ${targetParams.targetInfo.url} (${targetParams.sessionId})`);
-
-              // Use deduplication helper - only sends to clients that don't know about this target
-              sendAttachedToTarget(target);
-            } else if (method === "Target.detachedFromTarget") {
-              const detachParams = params as { sessionId: string };
-              connectedTargets.delete(detachParams.sessionId);
-
-              // Also remove any name mapping
-              for (const [name, sid] of namedPages) {
-                if (sid === detachParams.sessionId) {
-                  namedPages.delete(name);
-                  break;
-                }
-              }
-
-              log(`Target detached: ${detachParams.sessionId}`);
-
-              sendToPlaywright({
-                method: "Target.detachedFromTarget",
-                params: detachParams,
-              });
-            } else if (method === "Target.targetInfoChanged") {
-              const infoParams = params as { targetInfo: TargetInfo };
-              for (const target of connectedTargets.values()) {
-                if (target.targetId === infoParams.targetInfo.targetId) {
-                  target.targetInfo = infoParams.targetInfo;
-                  break;
-                }
-              }
-
-              sendToPlaywright({
-                method: "Target.targetInfoChanged",
-                params: infoParams,
-              });
-            } else {
-              // Forward other CDP events to Playwright
-              sendToPlaywright({
-                sessionId,
-                method,
-                params,
-              });
-            }
+          if (method === "Target.detachedFromTarget") {
+            const detached = params as Record<string, unknown> & { sessionId: string };
+            const target = registry.detach(detached.sessionId);
+            sendDetached(detached.sessionId, detached, target);
+            return;
           }
+          if (method === "Target.targetInfoChanged") {
+            const changed = params as unknown as { targetInfo: TargetInfo };
+            registry.updateTargetInfo(changed.targetInfo);
+            sendToPlaywright({ method, params: changed });
+            return;
+          }
+          sendSessionEvent(method, params, sessionId);
         },
-
         onClose(_event, ws) {
-          if (extensionWs && extensionWs !== ws) {
-            log("Old extension connection closed");
-            return;
-          }
-
+          if (!trustedOrigin) return;
+          if (extensionWs !== ws) return;
           log("Extension disconnected");
-
-          for (const pending of extensionPendingRequests.values()) {
-            pending.reject(new Error("Extension connection closed"));
-          }
-          extensionPendingRequests.clear();
-
-          extensionWs = null;
-          connectedTargets.clear();
-          namedPages.clear();
-
-          // Close all Playwright clients
-          for (const client of playwrightClients.values()) {
-            client.ws.close(1000, "Extension disconnected");
-          }
-          playwrightClients.clear();
-        },
-
-        onError(event) {
-          log("Extension WebSocket error:", event);
+          disconnectExtension(new PageBackendError(503, "extension connection closed"));
         },
       };
     })
   );
 
-  // ============================================================================
-  // Start Server
-  // ============================================================================
-
-  const server = serve({ fetch: app.fetch, port, hostname: host });
+  const server = serve({ fetch: app.fetch, port: requestedPort, hostname: host });
   injectWebSocket(server);
+  await waitForListening(server);
+  log(`HTTP: ${formatHttpUrl(host, requestedPort)}`);
 
-  const wsEndpoint = `ws://${host}:${port}/cdp`;
-
-  log("CDP relay server started");
-  log(`  HTTP: http://${host}:${port}`);
-  log(`  CDP endpoint: ${wsEndpoint}`);
-  log(`  Extension endpoint: ws://${host}:${port}/extension`);
-  log("");
-  log("Waiting for extension to connect...");
-
+  let stopped = false;
   return {
     wsEndpoint,
-    port,
+    port: requestedPort,
     async stop() {
-      for (const client of playwrightClients.values()) {
-        client.ws.close(1000, "Server stopped");
-      }
-      playwrightClients.clear();
-      extensionWs?.close(1000, "Server stopped");
-      server.close();
+      if (stopped) return;
+      stopped = true;
+      const ws = extensionWs;
+      disconnectExtension(new PageBackendError(503, "relay server stopped"));
+      ws?.close(1000, "Server stopped");
+      await new Promise<void>((resolve, reject) => {
+        server.close((error) => (error ? reject(error) : resolve()));
+      });
     },
   };
+}
+
+function waitForListening(server: ReturnType<typeof serve>): Promise<void> {
+  if (server.listening) return Promise.resolve();
+  return new Promise((resolve, reject) => {
+    server.once("listening", resolve);
+    server.once("error", reject);
+  });
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }

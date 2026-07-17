@@ -11,4 +11,4 @@
  *   // Now window.__devBrowser_getAISnapshot() and window.__devBrowser_selectSnapshotRef(ref) are available
  */
 
-export { getSnapshotScript, clearSnapshotScriptCache } from "./browser-script";
+export { getSnapshotScript, clearSnapshotScriptCache } from "./browser-script.js";

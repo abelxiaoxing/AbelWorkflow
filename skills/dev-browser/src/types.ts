@@ -1,18 +1,13 @@
-// API request/response types - shared between client and server
+import type { Viewport } from "./page-api.js";
 
 export interface ServeOptions {
   port?: number;
   host?: string;
   headless?: boolean;
   cdpPort?: number;
-  /** Directory to store persistent browser profiles (cookies, localStorage, etc.) */
-  profileDir?: string;
 }
 
-export interface ViewportSize {
-  width: number;
-  height: number;
-}
+export type ViewportSize = Viewport;
 
 export interface GetPageRequest {
   name: string;
@@ -32,4 +27,6 @@ export interface ListPagesResponse {
 
 export interface ServerInfoResponse {
   wsEndpoint: string;
+  mode: "standalone" | "extension";
+  extensionConnected?: boolean;
 }

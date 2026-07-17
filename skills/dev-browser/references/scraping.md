@@ -17,57 +17,106 @@ Scrolling is slow, unreliable, and wastes time. APIs return structured data with
 
 This prevents wasting time debugging a complex script when the issue is a simple path like `data.user.timeline` vs `data.user.result.timeline`.
 
+## External Script Setup
+
+Keep the installed skill directory read-only. Put scripts and temporary artifacts in the OS temporary directory or the task workspace, and remove them when the task finishes. External scripts receive the installed skill directory as their first argument and dynamically import the compiled client by file URL.
+
+Never persist complete authentication headers. Keep captured headers in memory, and write only redacted metadata or final non-sensitive results.
+
+```javascript
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { pathToFileURL } from "node:url";
+
+const skillDir = process.argv[2];
+if (!skillDir) throw new Error("Pass the installed dev-browser skill directory");
+const { connect, waitForPageLoad } = await import(
+  pathToFileURL(join(skillDir, "dist", "src", "client.js")).href
+);
+
+const workDir = await mkdtemp(join(tmpdir(), "dev-browser-scrape-"));
+let client;
+try {
+  client = await connect();
+  const page = await client.page("site");
+  let capturedRequest;
+
+  page.on("request", (request) => {
+    const url = request.url();
+    if (url.includes("/api/") || url.includes("/graphql/")) {
+      capturedRequest = {
+        url,
+        method: request.method(),
+        headers: request.headers(),
+      };
+    }
+  });
+
+  await page.goto("https://example.com/profile");
+  await waitForPageLoad(page);
+  await page.waitForTimeout(3000);
+
+  if (!capturedRequest) throw new Error("No matching API request captured");
+  const capturedUrl = new URL(capturedRequest.url);
+  console.log({
+    url: `${capturedUrl.origin}${capturedUrl.pathname}`,
+    method: capturedRequest.method,
+    headerNames: Object.keys(capturedRequest.headers),
+  });
+
+  const results = new Map();
+  let cursor;
+  do {
+    const params = { count: 20, ...(cursor ? { cursor } : {}) };
+    const url = new URL(capturedRequest.url);
+    url.searchParams.set("params", JSON.stringify(params));
+    const response = await page.evaluate(
+      async ({ url, headers }) => {
+        const result = await fetch(url, { headers });
+        return result.json();
+      },
+      { url: url.href, headers: capturedRequest.headers }
+    );
+
+    const entries = response?.data?.entries ?? [];
+    cursor = undefined;
+    for (const entry of entries) {
+      if (entry.type === "cursor-bottom") cursor = entry.value;
+      else if (entry.id) results.set(entry.id, entry);
+    }
+    await new Promise((resolve) => setTimeout(resolve, 500));
+  } while (cursor);
+
+  const resultPath = join(workDir, "results.json");
+  await writeFile(resultPath, JSON.stringify([...results.values()], null, 2));
+  console.log({ count: results.size, resultPath });
+} finally {
+  try {
+    await client?.disconnect();
+  } finally {
+    await rm(workDir, { recursive: true, force: true });
+  }
+}
+```
+
+Run it with quoted paths on Linux, PowerShell, or Command Prompt:
+
+```text
+node "PATH_TO_SCRIPT.mjs" "PATH_TO_INSTALLED_DEV_BROWSER"
+```
+
+If a result must survive the script, write the sanitized deliverable to the task workspace instead of `workDir`, then delete it at task completion unless the user asks to retain it.
+
 ## Step-by-Step Workflow
 
-### 1. Capture Request Details
+### 1. Capture One Request
 
-First, intercept a request to understand URL structure and required headers:
+Match a narrow API or GraphQL URL pattern. Keep the request URL and headers in memory. Log only the URL origin/path, method, and header names while confirming the endpoint; query parameters can contain credentials.
 
-```typescript
-import { connect, waitForPageLoad } from "@/client.js";
-import * as fs from "node:fs";
+### 2. Inspect One Response
 
-const client = await connect();
-const page = await client.page("site");
-
-let capturedRequest = null;
-page.on("request", (request) => {
-  const url = request.url();
-  // Look for API endpoints (adjust pattern for your target site)
-  if (url.includes("/api/") || url.includes("/graphql/")) {
-    capturedRequest = {
-      url: url,
-      headers: request.headers(),
-      method: request.method(),
-    };
-    fs.writeFileSync("tmp/request-details.json", JSON.stringify(capturedRequest, null, 2));
-    console.log("Captured request:", url.substring(0, 80) + "...");
-  }
-});
-
-await page.goto("https://example.com/profile");
-await waitForPageLoad(page);
-await page.waitForTimeout(3000);
-
-await client.disconnect();
-```
-
-### 2. Capture Response to Understand Schema
-
-Save a raw response to inspect the data structure:
-
-```typescript
-page.on("response", async (response) => {
-  const url = response.url();
-  if (url.includes("UserTweets") || url.includes("/api/data")) {
-    const json = await response.json();
-    fs.writeFileSync("tmp/api-response.json", JSON.stringify(json, null, 2));
-    console.log("Captured response");
-  }
-});
-```
-
-Then analyze the structure to find:
+Inspect the response in memory before building pagination. Find:
 
 - Where the data array lives (e.g., `data.user.result.timeline.instructions[].entries`)
 - Where pagination cursors are (e.g., `cursor-bottom` entries)
@@ -75,67 +124,7 @@ Then analyze the structure to find:
 
 ### 3. Replay API with Pagination
 
-Once you understand the schema, replay requests directly:
-
-```typescript
-import { connect } from "@/client.js";
-import * as fs from "node:fs";
-
-const client = await connect();
-const page = await client.page("site");
-
-const results = new Map(); // Use Map for deduplication
-const headers = JSON.parse(fs.readFileSync("tmp/request-details.json", "utf8")).headers;
-const baseUrl = "https://example.com/api/data";
-
-let cursor = null;
-let hasMore = true;
-
-while (hasMore) {
-  // Build URL with pagination cursor
-  const params = { count: 20 };
-  if (cursor) params.cursor = cursor;
-  const url = `${baseUrl}?params=${encodeURIComponent(JSON.stringify(params))}`;
-
-  // Execute fetch in browser context (has auth cookies/headers)
-  const response = await page.evaluate(
-    async ({ url, headers }) => {
-      const res = await fetch(url, { headers });
-      return res.json();
-    },
-    { url, headers }
-  );
-
-  // Extract data and cursor (adjust paths for your API)
-  const entries = response?.data?.entries || [];
-  for (const entry of entries) {
-    if (entry.type === "cursor-bottom") {
-      cursor = entry.value;
-    } else if (entry.id && !results.has(entry.id)) {
-      results.set(entry.id, {
-        id: entry.id,
-        text: entry.content,
-        timestamp: entry.created_at,
-      });
-    }
-  }
-
-  console.log(`Fetched page, total: ${results.size}`);
-
-  // Check stop conditions
-  if (!cursor || entries.length === 0) hasMore = false;
-
-  // Rate limiting - be respectful
-  await new Promise((r) => setTimeout(r, 500));
-}
-
-// Export results
-const data = Array.from(results.values());
-fs.writeFileSync("tmp/results.json", JSON.stringify(data, null, 2));
-console.log(`Saved ${data.length} items`);
-
-await client.disconnect();
-```
+Replay through `page.evaluate(fetch)` so the browser supplies its session cookies. Pass only the in-memory headers required by the endpoint, deduplicate with a `Map`, stop when the cursor or results end, and rate-limit requests.
 
 ## Key Patterns
 
@@ -149,7 +138,7 @@ await client.disconnect();
 
 ## Tips
 
-- **Extension mode**: `page.context().cookies()` doesn't work - capture auth headers from intercepted requests instead
+- **Extension mode**: `page.context().cookies()` doesn't work - keep intercepted auth headers in memory instead
 - **Rate limiting**: Add 500ms+ delays between requests to avoid blocks
 - **Stop conditions**: Check for empty results, missing cursor, or reaching a date/ID threshold
 - **GraphQL APIs**: URL params often include `variables` and `features` JSON objects - capture and reuse them
