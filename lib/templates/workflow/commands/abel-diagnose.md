@@ -12,7 +12,7 @@ argument-hint: <problem-description>
 **Guardrails**
 - Root cause first; never fix symptoms only
 - Verify root cause hypothesis with evidence before fix
-- Confidence gate: ≥90% before applying fixes
+- Only fixes with evidence-verified root cause may be applied
 - Every fix must include a regression test
 - Keep changes minimal and scoped
 - If verification fails, rollback and iterate
@@ -32,9 +32,9 @@ argument-hint: <problem-description>
 **Steps**
 1. Parse input, infer scope, and split into issue list (single or multiple).
 2. For each issue in parallel: collect logs/traces and locate code via the configured codebase retrieval policy.
-3. For each issue in parallel: perform root cause analysis; use `/sequential-think` for multi-component chains.
+3. For each issue in parallel: perform root cause analysis; for multi-component chains, decompose the failure chain step by step with evidence.
 4. Build dependency/conflict graph across issues and compute safe fix order.
-5. Run `/confidence-check` per issue; only issues with score ≥90% can move to fix generation.
+5. Verify each issue's root cause against collected evidence; only issues with a verified root cause can move to fix generation.
 6. Spawn one subagent per READY issue to generate `unified diff patch` and regression test with minimal scoped context.
 7. Main agent reviews/merges subagent outputs by dependency order and outputs one batch report with all issue statuses and patches.
 8. Apply merged patches strictly sequentially by dependency order.
@@ -42,13 +42,13 @@ argument-hint: <problem-description>
 
 **Batch Output**
 ```text
-## /oc:diagnose Batch Report
+## /abel-diagnose Batch Report
 
 ### Batch Summary
 Total: {n} | ReadyToFix: {n_ready} | Blocked: {n_blocked}
 
 ### Issue Results
-- [{id}] Classification: {category}/{severity} | Root Cause: {summary} | Confidence: {score} | Subagent: {agent_id|none} | Status: {READY|BLOCKED}
+- [{id}] Classification: {category}/{severity} | Root Cause: {summary} | Verified: {yes|no} | Subagent: {agent_id|none} | Status: {READY|BLOCKED}
 
 ### Patch Queue (dependency order)
 1. [{id}] [subagent:{agent_id}] {file_list}

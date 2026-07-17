@@ -18,7 +18,7 @@ tags: [openspec, init, setup]
 4. Run `openspec init` (or `openspec update` for existing projects).
 5. {{AUGMENT_CONTEXT_ENGINE_VALIDATION}}
 6. Verify required skills:
-   - Skills: `/dev-browser` `/sequential-think` `/context7-auto-research` `/grok-search` `/confidence-check`
+   - Skills: `/dev-browser` `/context7-auto-research` `/grok-search`
 7. Output summary with ✓/✗:
    - OpenSpec installation
    - Project initialization

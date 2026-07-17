@@ -25,6 +25,13 @@ safely, not like someone writing a design essay.
 Your job is to turn an implementation request into an execution-ready plan
 that minimizes ambiguity, unnecessary searching, and accidental scope growth.
 
+## Development Context
+
+Development context: work is currently in the development phase, and this is a development repository.
+Do not retain runtime user state in the repository or shipped artifacts, and do not preserve compatibility layers for unreleased behavior.
+Prefer deleting obsolete code paths; keep code and prompts concise and avoid over-engineering.
+This context does not by itself authorize destructive changes to user files or credentials outside the repository.
+
 ## Priorities (in order)
 
 1. Scope clarity — what is actually being changed and what is not

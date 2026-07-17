@@ -25,14 +25,8 @@ argument-hint: [change_name]
    - Check `openspec status --change <change_name>` for artifact completion
    - Use `openspec instructions specs --change <change_name>` for specs guidance
 
-3. **Implementation Analysis**: Invoke skills to perform systematic analysis to derive a plan:
+3. **Implementation Analysis**: Perform systematic analysis to derive a plan. If the proposal has 3+ interconnected requirements, first break it down into components, identify dependencies, evaluate architectural trade-offs, and surface potential conflicts. Then invoke `/context7-auto-research` to validate framework/library choices:
    ```
-   # First, invoke /sequential-think skill for systematic analysis if proposal has 3+ interconnected requirements
-
-   /sequential-think: "Analyze change <change_name> systematically: Break down into components, identify dependencies, evaluate architectural trade-offs, and surface potential conflicts."
-   
-   # Then invoke /context7-auto-research skill to validate framework/library choices
-
    /context7-auto-research: "For each technology mentioned in change <change_name>, retrieve official documentation patterns and best practices."
    ```
    Produce a consolidated, constraint-complete plan and list any missing constraints as questions to the user.

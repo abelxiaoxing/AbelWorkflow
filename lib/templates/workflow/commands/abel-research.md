@@ -77,7 +77,7 @@ All explore subagents MUST return valid JSON using this schema:
   - Clear scope
   - self-contained with independent output
   - Required output template (from Phase 4)
-  - If boundary involves 3+ interconnected components, invoke `/sequential-think` skill
+  - If boundary involves 3+ interconnected components, require explicit step-by-step dependency analysis
   - Clear success criteria: complete analysis of assigned boundary
 
 

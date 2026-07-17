@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { resolveExistingPiApiConfig } from "../lib/cli.mjs";
+import { resolveExistingPiApiConfig } from "../lib/providers/pi.mjs";
 
 test("resolveExistingPiApiConfig uses an auth-only API key", () => {
   const config = resolveExistingPiApiConfig({}, {}, {

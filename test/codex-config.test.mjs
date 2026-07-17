@@ -1,11 +1,31 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync, readdirSync } from "node:fs";
-import { buildCodexConfigContent } from "../lib/cli.mjs";
+import {
+  buildCodexConfigContent,
+  mergeCodexTemplateDefaults
+} from "../lib/providers/codex.mjs";
 
 const templateContent = `personality = "pragmatic"
 approvals_reviewer = "guardian_subagent"
 `;
+
+test("Codex template merge preserves present non-decimal TOML fields", () => {
+  const template = `[agents]
+max_threads = 10
+max_depth = 1
+job_max_runtime_seconds = 2400
+`;
+  for (const value of ["0x10", "+16", "1_000"]) {
+    const current = `[agents]
+max_threads = ${value}
+`;
+    const merged = mergeCodexTemplateDefaults(current, template);
+    assert.match(merged, new RegExp(`^max_threads = ${value.replace(/[+]/gu, "\\+")}$`, "mu"));
+    assert.equal(merged.match(/^max_threads\s*=/gmu)?.length, 1);
+    assert.match(merged, /^max_depth = 1$/mu);
+  }
+});
 
 test("buildCodexConfigContent keeps guardian_subagent defaults for fresh config", () => {
   const content = buildCodexConfigContent("", {

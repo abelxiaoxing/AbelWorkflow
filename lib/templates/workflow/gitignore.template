@@ -1,0 +1,16 @@
+*/.venv/
+*Cache/
+*node_modules/
+*.env
+*.log
+*/node_modules/
+*/tmp/
+skills/dev-browser/profiles/
+skills/dev-browser/tmp/
+skills/dev-browser/.cache/
+*cache*/
+*/dist/
+*/build/
+.claude/
+.codex/
+*pycache*/

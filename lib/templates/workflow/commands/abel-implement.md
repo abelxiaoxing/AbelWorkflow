@@ -44,9 +44,6 @@ argument-hint: [change_name]
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│ Step 0: Pre-Check                                       │
-│   └─ /confidence-check → require ≥90% to proceed        │
-├─────────────────────────────────────────────────────────┤
 │ Step 1: 🔴 Red Phase - Generate Failing Test            │
 │   ├─ Analyze task → determine test type                 │
 │   │   ├─ Backend → pytest/jest                          │
@@ -101,16 +98,14 @@ argument-hint: [change_name]
 13. Run all tests → MUST ALL PASS.
 14. If any test fails → analyze root cause, fix or rollback.
 15. Perform final side-effect review.
-16. Run `openspec archive <change_name>` or `/opsx:archive`.
+16. Report that the change is ready for archive; do not archive until the user explicitly authorizes `/opsx:archive`.
 
 **TDD Output Format**
 
 ```
-## /oc:implementation (TDD Mode)
+## /abel-implement (TDD Mode)
 
 ### Task 1/N: {task_description}
-
-📋 Confidence Check: {score}% {status}
 
 🔴 Red Phase
 ├─ Generated: tests/{test_file}
@@ -150,7 +145,7 @@ Frontend Review
 ✓ Reviews complete
 ├─ Applied: {refactoring_summary}
 ├─ Tests: {count} passed ✓
-└─ Ready for archive
+└─ Ready for user-authorized archive
 
 ✓ Implementation complete
 ```

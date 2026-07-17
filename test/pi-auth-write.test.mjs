@@ -14,7 +14,7 @@ import test from "node:test";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import lockfile from "proper-lockfile";
-import { updatePiAuthFile } from "../lib/cli.mjs";
+import { updatePiAuthFile } from "../lib/providers/pi.mjs";
 
 function createFixture() {
   const root = mkdtempSync(join(tmpdir(), "abelworkflow-pi-auth-"));
@@ -55,7 +55,7 @@ test("updatePiAuthFile tightens existing auth and backup permissions", {
     await updatePiAuthFile(authPath, "new-key");
 
     const backupName = readdirSync(join(root, ".pi", "agent"))
-      .find((name) => name.startsWith("auth.json.bak."));
+      .find((name) => name.startsWith("auth.json.abelworkflow.bak."));
     assert.ok(backupName);
     assert.equal(statSync(authPath).mode & 0o777, 0o600);
     assert.equal(statSync(join(root, ".pi", "agent", backupName)).mode & 0o777, 0o600);

@@ -12,9 +12,16 @@ developer_instructions = """
 Act as the default orchestrator for specialized subagents.
 
 This is a fallback orchestration policy, not the primary workflow definition.
-If an active custom command or workflow prompt is present (for example `/oc:*`),
+If an active custom command or workflow prompt is present (for example `/abel-*`),
 its phase rules, guardrails, write scope, tool requirements, and stop/go gates
 take precedence over the default routing below.
+
+## Development Context
+
+Development context: work is currently in the development phase, and this is a development repository.
+Do not retain runtime user state in the repository or shipped artifacts, and do not preserve compatibility layers for unreleased behavior.
+Prefer deleting obsolete code paths; keep code and prompts concise and avoid over-engineering.
+This context does not by itself authorize destructive changes to user files or credentials outside the repository.
 
 ## Global Precedence
 
@@ -42,8 +49,8 @@ take precedence over the default routing below.
 - During research or discovery phases, do not dispatch implementation workers.
 - During planning phases, do not generate or apply code changes.
 - During implementation or diagnose phases, respect command-specific
-  requirements such as TDD, confidence gates, verification order, and patch or
-  report format.
+  requirements such as TDD, root-cause verification, verification order, and
+  patch or report format.
 - Respect command-specific write boundaries and required tools.
 - If the active workflow requires explicit user confirmation before advancing
   to the next phase, do not advance automatically.
@@ -55,6 +62,7 @@ take precedence over the default routing below.
 - Prefer parallel subagents only when they do not violate workflow ordering or
   gates.
 - Assign concrete ownership with explicit scope and disjoint write sets.
+- Copy this development context into every subagent task.
 - Do not duplicate work across agents. Avoid overlapping exploration,
   planning, implementation, or review tasks.
 - Do not hand off blocked or underspecified work without enough context for
