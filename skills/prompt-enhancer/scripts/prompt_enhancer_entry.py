@@ -99,10 +99,6 @@ def first_non_empty(*values: str) -> str:
     return ""
 
 
-def env_value(*names: str) -> str:
-    return first_non_empty(*(os.environ.get(name, "") for name in names))
-
-
 def argv_value(flag: str, argv: Optional[List[str]] = None) -> str:
     argv = sys.argv[1:] if argv is None else argv
     for index, token in enumerate(argv):
@@ -123,22 +119,11 @@ def resolved_provider(argv: Optional[List[str]] = None) -> Optional[str]:
 
     if api_url and api_key and model:
         return "openai"
-    if api_url or api_key:
-        return None
-    if env_value("ANTHROPIC_API_KEY"):
-        return "anthropic"
-    if env_value("OPENAI_API_KEY"):
-        return "openai"
     return None
 
 
 def required_modules() -> List[str]:
-    provider = resolved_provider()
-    if provider == "anthropic":
-        return ["anthropic"]
-    if provider == "openai":
-        return ["openai"]
-    return []
+    return ["openai"] if resolved_provider() == "openai" else []
 
 
 def install_targets(modules: List[str]) -> List[str]:

@@ -1,2 +1,1 @@
-anthropic>=0.34,<1
 openai>=1.30,<2

@@ -84,8 +84,4 @@ Identify and fix the sorting bug in the codebase.
 5. Add or update tests to cover the bug scenario
 
 # Constraints
-- Maintain backward compatibility
-- Do not change the function signature unless necessary
-- Add inline comments explaining the fix
 ```
-

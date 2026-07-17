@@ -44,12 +44,12 @@ function printErrorResult(commandName, error, exitCode = 1) {
 
 function printUsage() {
   console.error(`Usage:
-  context7-api.js search <libraryName> <query|->
-  context7-api.js context <libraryId> <query|->
+  context7-api.cjs search <libraryName> <query|->
+  context7-api.cjs context <libraryId> <query|->
 
 Examples:
-  node context7-api.js search react "useEffect cleanup"
-  node context7-api.js context /facebook/react -
+  node context7-api.cjs search react "useEffect cleanup"
+  node context7-api.cjs context /facebook/react -
 
 Config:
   CONTEXT7_API_KEY from environment, or .env in the script directory`);
@@ -83,10 +83,7 @@ function loadApiKey() {
     if (key !== 'CONTEXT7_API_KEY') {
       continue;
     }
-    const value = trimmed.slice(separatorIndex + 1).trim();
-    if (value) {
-      return value.replace(/^["']|["']$/g, '');
-    }
+    return trimmed.slice(separatorIndex + 1).trim().replace(/^["']|["']$/g, '');
   }
 
   return null;

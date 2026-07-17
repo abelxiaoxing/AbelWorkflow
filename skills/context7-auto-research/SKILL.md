@@ -30,13 +30,13 @@ Common cues:
 
 ## Workflow
 
-1. Run from this skill directory and use `./context7-api.js`.
+1. Run from this skill directory and use `./context7-api.cjs`.
 2. Search with the full user query:
 
 ```bash
 cd skills/context7-auto-research
-node ./context7-api.js --help
-node ./context7-api.js search '<library-name>' - <<'__C7_QUERY__'
+node ./context7-api.cjs --help
+node ./context7-api.cjs search '<library-name>' - <<'__C7_QUERY__'
 <full user query>
 __C7_QUERY__
 ```
@@ -50,7 +50,7 @@ __C7_QUERY__
 4. Fetch focused documentation:
 
 ```bash
-node ./context7-api.js context '<library-id>' - <<'__C7_QUERY__'
+node ./context7-api.cjs context '<library-id>' - <<'__C7_QUERY__'
 <feature name or focused question>
 __C7_QUERY__
 ```
@@ -72,7 +72,7 @@ __C7_QUERY__
 
 - Preferred: `CONTEXT7_API_KEY` environment variable
 - Also supported: `<skill-dir>/.env`
-- CLI help: `node ./context7-api.js --help`
+- CLI help: `node ./context7-api.cjs --help`
 
 ## Notes
 

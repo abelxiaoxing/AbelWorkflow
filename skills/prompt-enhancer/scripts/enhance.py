@@ -72,19 +72,7 @@ def resolve_prompt(args: argparse.Namespace) -> str:
     raise ValueError("Missing prompt. Pass --prompt \"...\" or a positional prompt.")
 
 
-def first_non_empty(*values: str) -> str:
-    for value in values:
-        stripped = value.strip()
-        if stripped:
-            return stripped
-    return ""
-
-
-def env_value(*names: str) -> str:
-    return first_non_empty(*(os.environ.get(name, "") for name in names))
-
-
-def resolve_config(args: argparse.Namespace) -> Tuple[str, str, str, str]:
+def resolve_config(args: argparse.Namespace) -> Tuple[str, str, str]:
     api_url = (args.api_url or os.environ.get("PE_API_URL", "")).strip()
     api_key = (args.api_key or os.environ.get("PE_API_KEY", "")).strip()
     model = (args.model or os.environ.get("PE_MODEL", "")).strip()
@@ -97,44 +85,12 @@ def resolve_config(args: argparse.Namespace) -> Tuple[str, str, str, str]:
     if not model:
         missing.append("model")
     if missing:
-        has_openai_compatible_transport = bool(api_url or api_key)
-        if has_openai_compatible_transport:
-            raise ValueError(
-                "Missing third-party OpenAI-compatible config: "
-                + ", ".join(missing)
-                + ". If these fields are unavailable, use the current agent directly."
-            )
-
-        legacy_anthropic_key = env_value("ANTHROPIC_API_KEY")
-        if legacy_anthropic_key:
-            return "anthropic", "", legacy_anthropic_key, first_non_empty(model, "claude-sonnet-4-20250514")
-
-        legacy_openai_key = env_value("OPENAI_API_KEY")
-        if legacy_openai_key:
-            return "openai", "", legacy_openai_key, first_non_empty(model, "gpt-4o")
-
         raise ValueError(
             "Missing third-party OpenAI-compatible config: "
             + ", ".join(missing)
             + ". If these fields are unavailable, use the current agent directly."
         )
-    return "openai-compatible", api_url, api_key, model
-
-
-def enhance_with_anthropic(prompt: str, api_key: str, model: str) -> str:
-    try:
-        import anthropic
-    except ImportError:
-        raise RuntimeError("Missing dependency: anthropic. Install dependencies for the configured provider.") from None
-
-    client = anthropic.Anthropic(api_key=api_key)
-    message = client.messages.create(
-        model=model,
-        max_tokens=2048,
-        system=SYSTEM_PROMPT,
-        messages=[{"role": "user", "content": prompt}],
-    )
-    return message.content[0].text
+    return api_url, api_key, model
 
 
 def _extract_response_text(response) -> str:
@@ -170,11 +126,8 @@ def main() -> None:
     try:
         args = parse_args()
         prompt = resolve_prompt(args)
-        provider, api_url, api_key, model = resolve_config(args)
-        if provider == "anthropic":
-            print(enhance_with_anthropic(prompt, api_key, model))
-        else:
-            print(enhance_with_openai(prompt, api_key, model, api_url))
+        api_url, api_key, model = resolve_config(args)
+        print(enhance_with_openai(prompt, api_key, model, api_url))
     except Exception as exc:
         if debug_enabled():
             print(f"Error: {exc}", file=sys.stderr)

@@ -15,6 +15,8 @@ from pathlib import Path
 from typing import Optional
 from urllib.parse import urlsplit, urlunsplit
 
+from _dotenv import load_dotenv
+
 try:
     import httpx
     from tenacity import AsyncRetrying, retry_if_exception, stop_after_attempt, wait_random_exponential
@@ -24,38 +26,6 @@ except ImportError:
     sys.exit(1)
 
 
-# ============================================================================
-# .env 文件支持
-# ============================================================================
-
-def load_dotenv() -> bool:
-    """从项目根目录的 .env 文件加载环境变量。"""
-    env_path = Path(__file__).parent.parent / ".env"
-    if env_path.exists():
-        try:
-            with open(env_path, 'r', encoding='utf-8') as f:
-                for line in f:
-                    line = line.strip()
-                    if not line or line.startswith('#'):
-                        continue
-                    if '=' in line:
-                        key, _, value = line.partition('=')
-                        key = key.strip()
-                        value = value.strip()
-                        # 如果存在引号则移除
-                        if (value.startswith('"') and value.endswith('"')) or \
-                           (value.startswith("'") and value.endswith("'")):
-                            value = value[1:-1]
-                        # 允许 .env 覆盖空字符串环境变量
-                        if key and not os.environ.get(key):
-                            os.environ[key] = value
-            return True
-        except IOError:
-            pass
-    return False
-
-
-# 模块导入时加载 .env
 load_dotenv()
 
 
@@ -63,9 +33,21 @@ load_dotenv()
 # 配置
 # ============================================================================
 
+def load_default_model() -> str:
+    defaults_path = Path(__file__).resolve().parent.parent / "defaults.json"
+    try:
+        defaults = json.loads(defaults_path.read_text(encoding="utf-8"))
+        model = defaults["model"]
+    except (OSError, json.JSONDecodeError, KeyError, TypeError) as error:
+        raise RuntimeError(f"无法读取 Grok 默认配置 {defaults_path}: {error}") from error
+    if not isinstance(model, str) or not model.strip():
+        raise RuntimeError(f"Grok 默认配置缺少有效 model: {defaults_path}")
+    return model
+
+
 class Config:
     _instance = None
-    _DEFAULT_MODEL = "grok-4.20-auto"
+    _DEFAULT_MODEL = load_default_model()
 
     def __new__(cls):
         if cls._instance is None:

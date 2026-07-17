@@ -9,6 +9,7 @@ def load_dotenv() -> bool:
     if not env_path.exists():
         return False
     try:
+        seen_keys = set()
         with open(env_path, "r", encoding="utf-8") as f:
             for line in f:
                 line = line.strip()
@@ -21,7 +22,10 @@ def load_dotenv() -> bool:
                     value.startswith("'") and value.endswith("'")
                 ):
                     value = value[1:-1]
-                if key and not os.environ.get(key):
+                if not key or key in seen_keys:
+                    continue
+                seen_keys.add(key)
+                if not os.environ.get(key):
                     os.environ[key] = value
         return True
     except IOError:
