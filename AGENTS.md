@@ -20,7 +20,7 @@ This context does not by itself authorize destructive changes to user files or c
 
 ## Context Rules
 
-- Use local codebase retrieval with `rg`, `rg --files`, `git grep`, and direct file reads. Do not require augment-context-engine MCP.
+- Use local codebase retrieval with `rg`, `rg --files`, `git grep`, and direct file reads.
 - Rely only on project code plus `grok/context7` results
 - If information is insufficient or uncertain, state it explicitly
 
