@@ -12,20 +12,30 @@ argument-hint: [change_name]
 
 **Guardrails**
 
-**Guardrails**
-
 - Keep changes tightly scoped to the requested outcome; enforce side-effect review before applying any modification.
 - Minimize documentation—avoid unnecessary comments; prefer self-explanatory code.
 - Refer to `openspec/AGENTS.md` (located inside the `openspec/` directory—run `ls openspec` or `openspec update` if you don't see it) for additional OpenSpec conventions or clarifications.
 
 **TDD Guardrails (mandatory)**
-- **Red Phase**: Generate failing tests ONLY; implementation code is FORBIDDEN.
-- **Green Phase**: Write MINIMAL code to pass tests; over-engineering is FORBIDDEN.
-- **Refactor Phase**: Optimize code quality while keeping ALL tests passing.
-- **Mandatory**: Run tests after EVERY code change; never skip verification.
-- **Test-First**: Each task MUST have a failing test before implementation begins.
+- **Red Phase**: Create or execute the task's failing executable verification ONLY; implementation code is FORBIDDEN.
+- **Green Phase**: Write MINIMAL code to satisfy the verification; over-engineering is FORBIDDEN.
+- **Refactor Phase**: Optimize code quality while keeping target and affected verification green and introducing no new full-suite failures.
+- **Mandatory**: Run the task's executable verification after EVERY code change; never skip verification.
+- **Test-First**: Each task MUST have a failing executable verification before implementation begins.
 
 **Skill Integration**: See `Stage Skill Matrix` (Implement column)
+
+**Readiness Preflight (before any code or test write)**
+
+1. Explicit argument takes precedence. Resolve it directly; ask only when the argument is missing or cannot be resolved uniquely. Never require unconditional `openspec view` confirmation.
+2. Run `openspec status --change <change-name> --json`; read `schemaName`, `changeRoot`, `artifactPaths`, `applyRequires`, and `artifacts`.
+3. Run `openspec schema which <schemaName> --json`, read the resolved `schema.yaml`, and extract `apply.tracks`. Resolve `apply.tracks` relative to `changeRoot`; it must name one concrete existing regular file inside `changeRoot`. Missing, null, non-concrete, or escaping paths fail closed; do not infer the tracking path from apply-instruction `contextFiles` or `tasks`.
+4. Every artifact id in `applyRequires` must have status `done`; array presence or a general completion flag is insufficient.
+5. Run `openspec validate <change-name> --strict --type change`; require zero issues.
+6. Read every planning artifact reported by `artifactPaths`, then run `openspec instructions apply --change <change-name> --json` and follow the returned apply contract.
+7. Verify stable Requirement and Scenario references, the Requirement → Scenario → Verification → Task chain, and every task verification contract. Rebuild the Gate A and Gate B summaries; if approval cannot be proven in the current conversation, show the summaries and require explicit user confirmation.
+8. Run and record affected baseline tests and the full test suite before any write. Record each command, exit status, and normalized failure identities/reasons. Keep existing failures from the full suite separate from the target Red; an existing failure never counts as Red.
+9. If any preflight item fails, STOP and return `/abel-design --change <change-name>`. Do not invent or repair product, behavior, or architecture decisions here.
 
 **Tool Routing**:
 - **TDD Cycle**: Autonomous refactoring
@@ -34,39 +44,44 @@ argument-hint: [change_name]
   - Frontend refactor (subagents)
 - **E2E tasks** → `/dev-browser`
 
-1. Run `openspec view` to inspect current project status and review `Active Changes`; ask the user to confirm which change folder (`<change_name>`) they want to implement.
-2. Check artifact status: `openspec status --change <change_name>`
-3. Get apply instructions: `openspec instructions apply --change <change_name>`
-4. Detect test framework: identify project's testing setup (pytest/jest/vitest/etc.)
-5. Work through tasks sequentially; for each task, execute the **TDD Cycle** below.
+After preflight, detect the project's verification tooling and work through the tracked tasks sequentially.
 
 **TDD Cycle (per task)**
 
+Consume these ordinary indented bullets from the task verification contract, never Markdown checkboxes:
+- verification type: property | example | E2E | static
+- Red command and expected failure reason
+- Green expected behavior
+- affected-suite command
+- target scope/files
+
+- Red must fail because of the target defect described by the contract.
+- If the failure reason differs or the command is invalid, STOP and return `/abel-design --change <change-name>`; do not improvise a replacement contract.
+- A non-behavior-change task starts with its specified failing executable static verification.
+- A manual-only task is not implementation-ready; STOP and return `/abel-design --change <change-name>`.
+
 ```
 ┌─────────────────────────────────────────────────────────┐
-│ Step 1: 🔴 Red Phase - Generate Failing Test            │
-│   ├─ Analyze task → determine test type                 │
-│   │   ├─ Backend → pytest/jest                          │
-│   │   ├─ Frontend → vitest/jest                         │
-│   │   └─ E2E → dev-browser                              │
-│   ├─ Generate test via                                  │
-│   │   PROMPT: "Generate failing test for: {task}        │
+│ Step 1: 🔴 Red Phase - Execute Contract Verification    │
+│   ├─ Use the contract's verification type and scope     │
+│   ├─ Generate the required failing verification via     │
+│   │   PROMPT: "Generate failing verification for: {task}│
 │   │            Context: {code_context}                  │
 │   │            Output: unified diff patch               │
 │   │            FORBIDDEN: implementation code"          │
-│   ├─ Apply test code (after review)                     │
-│   ├─ Run test → MUST FAIL                               │
-│   └─ If passes → test invalid, regenerate               │
+│   ├─ Apply verification code (after review)             │
+│   ├─ Run Red command → MUST FAIL for expected reason    │
+│   └─ If it passes or fails differently → STOP           │
 ├─────────────────────────────────────────────────────────┤
 │ Step 2: 🟢 Green Phase - Minimal Implementation         │
 │   ├─ Generate minimal implementation                    │
-│   │   PROMPT: "Generate minimal code to pass test:      │
-│   │            Test: {test_code}                        │
+│   │   PROMPT: "Generate minimal code for verification:  │
+│   │            Verification: {verification_context}     │
 │   │            Context: {code_context}                  │
 │   │            Output: unified diff patch               │
 │   │            FORBIDDEN: over-engineering"             │
 │   ├─ Apply implementation (after review & rewrite)      │
-│   ├─ Run test → MUST PASS                               │
+│   ├─ Run Red command → MUST PASS                        │
 │   └─ If fails → analyze error, fix, retry               │
 ├─────────────────────────────────────────────────────────┤
 │ Step 3: 🔵 Refactor Phase                               │
@@ -77,28 +92,29 @@ argument-hint: [change_name]
 │   │   ├─ Enhance readability                            │
 │   │   └─ Simplify logic where possible                  │
 │   ├─ Apply refactoring changes                          │
-│   ├─ Run test → MUST STILL PASS                         │
+│   ├─ Run affected-suite command → MUST STILL PASS       │
 │   └─ If fails → rollback refactoring                    │
 └─────────────────────────────────────────────────────────┘
 ```
 
-6. Before applying any change, perform mandatory side-effect review.
+Before applying any change, perform mandatory side-effect review.
 
-7. After TDD cycle completes for a task, mark as `- [x]` in `tasks.md`.
+After a task's TDD cycle completes, locate the task ID's checkbox in the concrete tracking file resolved from schema `apply.tracks`; require exactly one match and update only it. Zero or multiple matches must STOP and return `/abel-design --change <change-name>`. Never hardcode an artifact filename or infer the tracking path from apply instructions.
 
 **Final Review & Refactor** (after all tasks complete)
 
-8. Run all tests to ensure everything passes.
+1. Require all target tests to be green, then run the affected suites.
+2. Re-run the same full-suite command (the full test suite), compare normalized failure identities with the recorded full-suite baseline, and require no new failures.
 
-9. Execute global code review via subagents:
+3. Execute global code review via subagents:
 
-10. Wait for background tasks to complete; review diff patches.
-11. Rewrite patches into production-grade code (per rewriting principle).
-12. Apply refactoring changes.
-13. Run all tests → MUST ALL PASS.
-14. If any test fails → analyze root cause, fix or rollback.
-15. Perform final side-effect review.
-16. Report that the change is ready for archive; do not archive until the user explicitly authorizes `/opsx:archive`.
+4. Wait for background tasks to complete; review diff patches.
+5. Rewrite patches into production-grade code (per rewriting principle).
+6. Apply refactoring changes.
+7. Re-run target, affected, and full-suite verification against the baseline.
+8. If a target test fails or the full suite has a new failure, analyze the root cause and fix or roll back.
+9. Perform final side-effect review.
+10. Report that the change is ready for archive; do not archive until the user explicitly authorizes `/opsx:archive`.
 
 **TDD Output Format**
 
@@ -108,19 +124,20 @@ argument-hint: [change_name]
 ### Task 1/N: {task_description}
 
 🔴 Red Phase
-├─ Generated: tests/{test_file}
-├─ Run: {test_command}
-└─ Result: {count} failed ✓ (expected)
+├─ Type: {verification_type}
+├─ Generated: {verification_files_or_none}
+├─ Run: {red_command}
+└─ Result: failed for {expected_failure_reason} ✓
 
 🟢 Green Phase
-├─ Generated: src/{impl_file}
-├─ Run: {test_command}
-└─ Result: {count} passed ✓
+├─ Generated: {implementation_files}
+├─ Run: {red_command}
+└─ Result: {green_expected_behavior} ✓
 
 🔵 Refactor Phase (Agent autonomous)
 ├─ Optimized: {description}
-├─ Run: {test_command}
-└─ Result: {count} passed ✓
+├─ Run: {affected_suite_command}
+└─ Result: target verification green ✓
 
 ✓ Task complete → Next task
 
@@ -144,7 +161,8 @@ Frontend Review
 
 ✓ Reviews complete
 ├─ Applied: {refactoring_summary}
-├─ Tests: {count} passed ✓
+├─ Target tests: green ✓
+├─ Full suite: no failures beyond baseline ✓
 └─ Ready for user-authorized archive
 
 ✓ Implementation complete

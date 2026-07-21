@@ -19,11 +19,10 @@ test("repository rules and deployable workflow templates are isolated", () => {
   assert.doesNotMatch(repositoryAgents, /\{\{[^{}]+\}\}/u);
   assert.match(workflowAgents, /\{\{CODEBASE_RETRIEVAL_POLICY\}\}/u);
   assert.deepEqual(commandNames, [
+    "abel-design.md",
     "abel-diagnose.md",
     "abel-implement.md",
-    "abel-init.md",
-    "abel-plan.md",
-    "abel-research.md"
+    "abel-init.md"
   ]);
   assert.match(read("gitignore.template"), /\*\.env/u);
   for (const commandName of commandNames) {
@@ -57,6 +56,18 @@ test("renderWorkflowTemplate renders every workflow template in memory for both 
     renderWorkflowTemplate(agentsTemplate, { augmentContextEngine: true }),
     /mcp__augment-context-engine__codebase-retrieval/u
   );
+});
+
+test("pattern audit targets the current requirement before change creation", () => {
+  const template = "{{CODEBASE_RETRIEVAL_PATTERN_AUDIT}}";
+  const lite = renderWorkflowTemplate(template, { augmentContextEngine: false });
+  const enabled = renderWorkflowTemplate(template, { augmentContextEngine: true });
+
+  for (const content of [lite, enabled]) {
+    assert.doesNotMatch(content, /<change_name>|proposal/iu);
+  }
+  assert.match(enabled, /current requirement/u);
+  assert.match(enabled, /key concepts from the requirement/u);
 });
 
 test("renderWorkflowTemplate rejects unresolved placeholders", () => {

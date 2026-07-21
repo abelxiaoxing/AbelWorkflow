@@ -30,17 +30,28 @@ function commandNames(root) {
 test("README documents every official workflow and OpenSpec command", () => {
   const readme = read("README.md");
   const expected = [
+    "abel-design",
     "abel-diagnose",
     "abel-implement",
-    "abel-init",
-    "abel-plan",
-    "abel-research"
+    "abel-init"
   ];
 
   assert.deepEqual(commandNames(workflowCommandsRoot), expected);
   for (const name of expected) assert.match(readme, new RegExp(`/${name}\\b`, "u"));
-  for (const command of ["/opsx:new", "/opsx:ff", "/opsx:archive", "openspec view", "openspec status"]) {
+  for (const command of [
+    "/opsx:propose",
+    "/opsx:explore",
+    "/opsx:apply",
+    "/opsx:update",
+    "/opsx:sync",
+    "/opsx:archive",
+    "openspec view",
+    "openspec status"
+  ]) {
     assert.ok(readme.includes(command), command);
+  }
+  for (const removed of ["/abel-research", "/abel-plan", "/opsx:new", "/opsx:ff"]) {
+    assert.equal(readme.includes(removed), false, removed);
   }
 });
 

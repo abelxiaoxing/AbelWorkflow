@@ -27,8 +27,8 @@ This context does not by itself authorize destructive changes to user files or c
 ## Workflow
 
 ```
-/abel-init → /abel-research → /abel-plan → /abel-implement(TDD)
-                                      ↘ /abel-diagnose (bug fix)
+/abel-init → /abel-design → /abel-implement(TDD)
+                           ↘ /abel-diagnose (bug fix)
 ```
 
 ## Universal Constraints
@@ -38,13 +38,13 @@ This context does not by itself authorize destructive changes to user files or c
 
 ## Stage Skill Matrix
 
-| Skill | Research | Plan | Implement | Diagnose | Capability & Triggers |
-| --- | :---: | :---: | :---: | :---: | --- |
-| /grok-search | ✅ | ○ | ❌ | ✅ | Deep research, concept understanding. Trigger: architectural patterns, best practices |
-| /context7-auto-research | ✅ | ✅ | ✅ | ✅ | Official docs retrieval. Trigger: framework/library usage, APIs |
-| /dev-browser | ○ | ○ | ✅ | ✅ | Browser automation. Trigger: E2E testing, UI verification |
-| /time | ○ | ✅ | ✅ | ○ | Time/timezone operations. Trigger: scheduling logic |
+| Skill | Design | Implement | Diagnose | Capability & Triggers |
+| --- | :---: | :---: | :---: | --- |
+| /grok-search | ✅ | ❌ | ✅ | Deep research, concept understanding. Trigger: architectural patterns, best practices |
+| /context7-auto-research | ✅ | ✅ | ✅ | Official docs retrieval. Trigger: framework/library usage, APIs |
+| /dev-browser | ○ | ✅ | ✅ | Browser automation. Trigger: E2E testing, UI verification |
+| /time | ○ | ✅ | ○ | Time/timezone operations. Trigger: scheduling logic |
 
 Legend: ✅ Primary, ○ Optional, ❌ Forbidden
 
-OpenSpec commands: `/opsx:new` `/opsx:ff` `/opsx:archive` `openspec view` `openspec status`
+OpenSpec commands: `/opsx:propose` `/opsx:explore` `/opsx:apply` `/opsx:update` `/opsx:sync` `/opsx:archive` `openspec view` `openspec status`

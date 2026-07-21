@@ -28,7 +28,7 @@ test("renderWorkflowTemplate renders enabled and lite retrieval policies", () =>
 });
 
 test("renderWorkflowTemplate removes mandatory augment MCP wording from lite commands", () => {
-  const commandNames = ["abel-init.md", "abel-research.md", "abel-plan.md", "abel-diagnose.md"];
+  const commandNames = ["abel-design.md", "abel-diagnose.md", "abel-init.md"];
   for (const commandName of commandNames) {
     const template = readFileSync(new URL(`lib/templates/workflow/commands/${commandName}`, repoRoot), "utf8");
     const content = renderWorkflowTemplate(template, { augmentContextEngine: false });
@@ -37,5 +37,4 @@ test("renderWorkflowTemplate removes mandatory augment MCP wording from lite com
     assert.doesNotMatch(content, /\{\{[A-Z_]+\}\}/u, commandName);
   }
 });
-
 

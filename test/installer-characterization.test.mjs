@@ -155,7 +155,7 @@ test("source-clone install fails before mutation and force cannot bypass migrati
   try {
     copySourceInstallFixture(agentsDir);
     const agentsBefore = readFileSync(join(agentsDir, "AGENTS.md"), "utf8");
-    const researchBefore = readFileSync(join(agentsDir, "lib", "templates", "workflow", "commands", "abel-research.md"), "utf8");
+    const designBefore = readFileSync(join(agentsDir, "lib", "templates", "workflow", "commands", "abel-design.md"), "utf8");
     const result = spawnSync(process.execPath, ["bin/abelworkflow.mjs", "install", "--force"], {
       cwd: agentsDir,
       env: {
@@ -171,7 +171,7 @@ test("source-clone install fails before mutation and force cannot bypass migrati
     assert.match(result.stderr || result.stdout, /手动迁移/u);
     assert.match(result.stderr || result.stdout, /--force/u);
     assert.equal(readFileSync(join(agentsDir, "AGENTS.md"), "utf8"), agentsBefore);
-    assert.equal(readFileSync(join(agentsDir, "lib", "templates", "workflow", "commands", "abel-research.md"), "utf8"), researchBefore);
+    assert.equal(readFileSync(join(agentsDir, "lib", "templates", "workflow", "commands", "abel-design.md"), "utf8"), designBefore);
     assert.equal(existsSync(join(homeDir, ".codex", "AGENTS.md")), false);
   } finally {
     rmSync(homeDir, { recursive: true, force: true });
