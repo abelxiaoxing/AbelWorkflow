@@ -136,6 +136,16 @@ test("Grok installer and env example use the packaged runtime default", async ()
   assert.equal(configuredModel, defaults.model);
 });
 
+test("Tavily configuration prefills and persists its API URL", async () => {
+  const source = await readFile(new URL("../lib/providers/skills.mjs", import.meta.url), "utf8");
+
+  assert.match(
+    source,
+    /message: "Tavily API URL",\s+initialValue: existing\.TAVILY_API_URL \|\| "https:\/\/api\.tavily\.com"/u
+  );
+  assert.match(source, /TAVILY_API_URL: tavilyUrl/u);
+});
+
 test("skill configuration forwards the complete custom Paths object", async () => {
   const root = join(tmpdir(), "abelworkflow-custom-paths");
   const paths = createPaths({
