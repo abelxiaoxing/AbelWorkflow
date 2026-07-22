@@ -1,5 +1,5 @@
 import { EventEmitter } from "node:events";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
 import { describe, expect, it } from "vitest";
@@ -55,7 +55,7 @@ describe("isTcpPortInUse", () => {
 
 describe("resolveSkillDirFromEntrypoint", () => {
   it("resolves the package root from source and compiled startup entrypoints", () => {
-    const skillDir = join("/opt", "dev-browser");
+    const skillDir = resolve("/opt", "dev-browser");
 
     expect(
       resolveSkillDirFromEntrypoint(pathToFileURL(join(skillDir, "scripts", "start.ts")).href)
