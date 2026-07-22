@@ -61,18 +61,19 @@ test("all managed workflow install entry points use the reporting wrapper", () =
 test("CLI forwards canonical Paths", () => {
   const source = readFileSync(new URL("../lib/cli/main.mjs", import.meta.url), "utf8");
 
-  for (const configureName of [
-    "configureGrokSearchEnv",
-    "configureContext7Env",
-    "configurePromptEnhancerEnv"
+  for (const [configureName, skillName] of [
+    ["configureGrokSearchEnv", "grok-search"],
+    ["configureContext7Env", "context7-auto-research"]
   ]) {
     assert.equal(source.match(new RegExp(`${configureName}\\(options\\.paths`, "gu"))?.length, 2);
     assert.match(
       source,
-      new RegExp(`${configureName}\\(options\\.paths, ensureWorkflowPresentWithReport, promptApi\\)`, "u")
+      new RegExp(`${configureName}\\(options\\.paths, \\(paths\\) => ensureSkillPresentWithReport\\(paths, "${skillName}"\\), promptApi\\)`, "u")
     );
     assert.doesNotMatch(source, new RegExp(`${configureName}\\(options\\.agentsDir`, "u"));
   }
+  assert.doesNotMatch(source, /configurePromptEnhancerEnv/u);
+  assert.doesNotMatch(source, /ensureWorkflowPresent/u);
   assert.match(
     source,
     /"pi-api": async \(\) => configurePiApi\(options\.paths, ensurePiResourcesLinkedWithReport, promptApi\)/u

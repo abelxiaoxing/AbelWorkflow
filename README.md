@@ -64,7 +64,7 @@ node .\bin\abelworkflow.mjs install --agents-dir "$HOME\.agents"
 - Claude 配置默认写入 `bypassPermissions` 全权限模式（YOLO），第三方 API 仅使用 API Key 认证，不添加任何 MCP 权限。已有 permissions、deny、hooks 和 timeout 保持不变。
 - Codex 只更新 AbelWorkflow 管理的认证字段，保留未知字段、其他 Provider 和用户 token。
 - Pi 0.80.0 及以上版本按无会话启动时实际选中的当前有效 Provider 配置 API，并将其 API Key 保存在 `~/.pi/agent/auth.json`；`models.json` 只保留模型定义。旧 models-only key 会按先写 auth、后删除旧 key 的顺序迁移。
-- Grok 默认模型统一为 `grok-4.20-auto`。
+- Grok 默认模型统一为 `grok-4.20-non-reasoning`。
 - Context7 使用显式 CommonJS 入口 `context7-api.cjs`。
 - dev-browser 发布运行时使用 Node ESM 编译产物，入口为 `node dist/scripts/start.js`，不依赖 Bun 或运行时 `npx tsx`。
 - skill 密钥写入 `~/.agents/skills/<skill>/.env`；这些文件属于私密配置。

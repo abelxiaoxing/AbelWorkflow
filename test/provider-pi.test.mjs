@@ -10,6 +10,7 @@ import {
   assertConfigurablePiProvider,
   assertSupportedPiVersion,
   buildPiModelsConfig,
+  configurePiApi,
   detectPiEffectiveModel,
   parsePiRpcEffectiveModel,
   persistPiConfiguration,
@@ -28,6 +29,26 @@ test("Pi requires auth-only custom provider support from version 0.80.0", () => 
       /Pi 0\.80\.0|无法检测 Pi 版本/u,
       String(version)
     );
+  }
+});
+
+test("Pi API configuration warns and returns when Pi is missing or outdated", async () => {
+  for (const [version, expected] of [
+    [undefined, /请先安装 Pi 0\.80\.0/u],
+    ["pi 0.79.9", /请先升级到 Pi 0\.80\.0/u]
+  ]) {
+    const warnings = [];
+    await assert.doesNotReject(configurePiApi(
+      {},
+      async () => assert.fail("resources must not be linked"),
+      undefined,
+      {
+        getPiVersion: () => version,
+        log: { warn: (message) => warnings.push(message) }
+      }
+    ));
+    assert.equal(warnings.length, 1);
+    assert.match(warnings[0], expected);
   }
 });
 

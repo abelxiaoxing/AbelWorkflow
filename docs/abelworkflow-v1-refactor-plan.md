@@ -396,11 +396,10 @@ CLI → auth.json → environment → models.json
 ### Grok、Context7、Prompt Enhancer
 
 - 新增 skills/grok-search/defaults.json。
-- Python runtime 和安装器共同读取 grok-4.20-auto。
+- Python runtime 和安装器共同读取 grok-4.20-non-reasoning。
 - .env.example 必须通过 contract test 与 defaults.json 保持一致。
 - Context7 使用显式 .cjs，更新全部 SKILL 命令。
-- Prompt Enhancer 1.0 只接受显式 `PE_API_URL`、`PE_API_KEY`、`PE_MODEL` 或 CLI `--url`、`--api-key`、`--model`；不再隐式读取全局 `OPENAI_API_KEY` 或 `ANTHROPIC_API_KEY`，并移除 Anthropic fallback。
-- Prompt Enhancer 的 `.env` 写入走 `config/store.mjs`，只更新或清除 `PE_*`，保留用户的 `OPENAI_API_KEY` 和 `ANTHROPIC_API_KEY`。
+- Prompt Enhancer 移除第三方 API/Python 运行时与环境变量配置，由当前 agent 按 TEMPLATE.md 直接改写提示词，无需独立模型配置。
 
 ## 十一、Sequential Think 和 confidence-check
 

@@ -20,7 +20,7 @@ function assertTrackable(relativePath) {
   assert.equal(result.status, 1, `${relativePath} must not be ignored by Git`);
 }
 
-test("both npm locks are trackable", () => {
+test("the npm-only repository has exactly its two supported lockfiles", () => {
   const requiredPaths = [
     "package-lock.json",
     "skills/dev-browser/package-lock.json"
@@ -30,6 +30,7 @@ test("both npm locks are trackable", () => {
     assert.equal(existsSync(new URL(`../${relativePath}`, import.meta.url)), true);
     assertTrackable(relativePath);
   }
+  assert.equal(existsSync(new URL("../bun.lock", import.meta.url)), false);
 });
 
 test("root quality scripts cover every repository test boundary", () => {
@@ -86,4 +87,3 @@ test("CI runs checks with real Node on the required platform matrix", () => {
   assert.match(standaloneIntegration, /process\.env\.CI/u);
   assert.match(standaloneIntegration, /Playwright Chromium is required in CI/u);
 });
-

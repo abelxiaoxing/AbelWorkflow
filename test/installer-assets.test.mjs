@@ -445,6 +445,31 @@ test("removed managed files are deleted only when unchanged or forced", async ()
   });
 });
 
+test("pathPrefix syncs and prunes only matching managed files", async () => {
+  await withFixture(async ({ paths }) => {
+    const first = await syncManagedFiles({ paths });
+    await persistSyncMetadata(paths, first);
+    await rm(join(paths.workflowTemplateRoot, "commands/abel-init.md"));
+    await writeFixtureFile(paths.packageRoot, "skills/example/SKILL.md", "# Example v2\n");
+
+    const result = await syncManagedFiles({ paths, pathPrefix: "skills/example/" });
+
+    assert.deepEqual(result.report.updated, ["skills/example/SKILL.md"]);
+    assert.deepEqual(result.report.removed, []);
+    assert.equal(
+      await readFile(join(paths.agentsDir, "skills/example/SKILL.md"), "utf8"),
+      "# Example v2\n"
+    );
+    assert.equal(
+      await readFile(join(paths.agentsDir, "commands/abel-init.md"), "utf8"),
+      "# init\n"
+    );
+    assert.ok(Object.hasOwn(result.managedFiles, "commands/abel-init.md"));
+    assert.ok(Object.hasOwn(result.managedFiles, "README.md"));
+    assert.equal(result.managedFiles["AGENTS.md"], first.managedFiles["AGENTS.md"]);
+  });
+});
+
 test("force preserves an obstructing directory at a stale managed file path and drops ownership", async () => {
   await withFixture(async ({ paths }) => {
     const relativePath = "commands/abel-init.md";

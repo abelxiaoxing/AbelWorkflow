@@ -13,7 +13,7 @@ import { join } from "node:path";
 import test from "node:test";
 import {
   ensurePiResourcesLinked,
-  ensureWorkflowPresent,
+  ensureSkillPresent,
   installWorkflow,
   packageVersionFor
 } from "../lib/installer/install.mjs";
@@ -114,17 +114,65 @@ test("installWorkflow returns a complete report, writes metadata last, and repea
   });
 });
 
-test("ensureWorkflowPresent completes a deployment that only contains AGENTS.md", async () => {
+test("ensureSkillPresent syncs only the requested skill without links or other managed files", async () => {
   await withFixture(async ({ paths }) => {
     await writeFixtureFile(paths.agentsDir, "AGENTS.md", "existing policy\n");
 
-    const result = await ensureWorkflowPresent(paths);
+    const result = await ensureSkillPresent(paths, "example");
 
     assert.equal(
       await readFile(join(paths.agentsDir, "skills/example/SKILL.md"), "utf8"),
       "# Example\n"
     );
-    assert.ok(result.created.includes("skills/example/SKILL.md"));
+    assert.deepEqual(result.created, ["skills/example/SKILL.md"]);
+    assert.deepEqual(result.linked, []);
+    assert.equal(await readFile(join(paths.agentsDir, "AGENTS.md"), "utf8"), "existing policy\n");
+    await assert.rejects(
+      stat(join(paths.agentsDir, "README.md")),
+      (error) => error.code === "ENOENT"
+    );
+    await assert.rejects(
+      stat(join(paths.agentsDir, "extensions/example/index.ts")),
+      (error) => error.code === "ENOENT"
+    );
+
+    const metadata = await readInstallMetadata(paths);
+    assert.deepEqual(Object.keys(metadata.managedFiles), ["skills/example/SKILL.md"]);
+    assert.deepEqual(metadata.linkedTargets, {});
+  });
+});
+
+test("ensureSkillPresent preserves metadata from a full install", async () => {
+  await withFixture(async ({ paths }) => {
+    await installWorkflow({ paths, relinkOnly: false, force: false });
+    const installed = await readInstallMetadata(paths);
+
+    const result = await ensureSkillPresent(paths, "example");
+
+    assert.deepEqual(result.created, []);
+    assert.deepEqual(result.updated, []);
+    assert.deepEqual(result.linked, []);
+    assert.ok(result.unchanged.includes("skills/example/SKILL.md"));
+    assert.deepEqual(await readInstallMetadata(paths), installed);
+  });
+});
+
+test("ensureSkillPresent removes stale files only within the requested skill", async () => {
+  await withFixture(async ({ paths }) => {
+    await installWorkflow({ paths, relinkOnly: false, force: false });
+    await rm(join(paths.packageRoot, "skills/example/SKILL.md"));
+
+    const result = await ensureSkillPresent(paths, "example");
+
+    assert.deepEqual(result.removed, ["skills/example/SKILL.md"]);
+    await assert.rejects(
+      stat(join(paths.agentsDir, "skills/example/SKILL.md")),
+      (error) => error.code === "ENOENT"
+    );
+
+    const metadata = await readInstallMetadata(paths);
+    assert.equal(Object.hasOwn(metadata.managedFiles, "skills/example/SKILL.md"), false);
+    assert.ok(Object.keys(metadata.managedFiles).length > 0);
   });
 });
 
@@ -141,10 +189,10 @@ test("ensurePiResourcesLinked returns the incremental sync report", async () => 
   });
 });
 
-test("ensureWorkflowPresent rejects the removed agentsDir string overload", async () => {
+test("ensureSkillPresent rejects the removed agentsDir string overload", async () => {
   await withFixture(async ({ paths }) => {
     await assert.rejects(
-      ensureWorkflowPresent(paths.agentsDir),
+      ensureSkillPresent(paths.agentsDir, "example"),
       /Paths/u
     );
     await assert.rejects(stat(paths.agentsDir), (error) => error.code === "ENOENT");

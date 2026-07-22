@@ -108,7 +108,7 @@ test("1.0 migration guide covers every state and runtime migration boundary", ()
   for (const pattern of requiredPatterns) assert.match(migration, pattern);
 });
 
-test("1.0 docs define conservative v1 ownership and Prompt Enhancer migration", () => {
+test("1.0 docs define conservative v1 ownership and Prompt Enhancer runtime removal", () => {
   const documents = [
     read("docs/migration-1.0.md"),
     read("docs/abelworkflow-v1-refactor-plan.md")
@@ -122,10 +122,10 @@ test("1.0 docs define conservative v1 ownership and Prompt Enhancer migration", 
     assert.match(document, /`--force` 仅备份并替换当前 manifest 精确声明的路径/u);
     assert.match(document, /stale 路径.*保留/u);
 
-    assert.match(document, /只接受.*`PE_API_URL`.*`PE_API_KEY`.*`PE_MODEL`.*`--url`.*`--api-key`.*`--model`/su);
-    assert.match(document, /不再隐式读取.*`OPENAI_API_KEY`.*`ANTHROPIC_API_KEY`/su);
-    assert.match(document, /移除 Anthropic fallback/u);
-    assert.match(document, /保留.*`OPENAI_API_KEY`.*`ANTHROPIC_API_KEY`/su);
+    assert.match(document, /Prompt Enhancer.*移除.*(?:第三方 API|Python).*运行时/su);
+    assert.match(document, /当前 agent.*直接改写/su);
+    assert.doesNotMatch(document, /`PE_(?:API_URL|API_KEY|MODEL)`/u);
+    assert.doesNotMatch(document, /`--(?:url|api-key|model)`/u);
   }
 
   assert.doesNotMatch(documents[0], /读取 v1 metadata 的 features、managedChildren/u);

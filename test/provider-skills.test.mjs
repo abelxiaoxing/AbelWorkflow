@@ -4,10 +4,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import {
-  buildPromptEnhancerEnvUpdates,
   configureContext7Env,
   configureGrokSearchEnv,
-  configurePromptEnhancerEnv,
   grokDefaults,
   readSkillEnvFile,
   updateSkillEnvFile
@@ -91,66 +89,41 @@ test("skill env updates preserve unknown quoted credentials byte-for-byte", asyn
 test("managed quoted credentials roundtrip without needless rewrites", async () => {
   const directory = await mkdtemp(join(tmpdir(), "abelworkflow-skill-env-"));
   const target = join(directory, ".env");
-  const original = `PE_API_KEY='secret\\path with "quote"'\n`;
+  const original = `GROK_API_KEY='secret\\path with "quote"'\n`;
   await writeFile(target, original, { mode: 0o600 });
 
   const unchanged = await updateSkillEnvFile(target, {
-    PE_API_KEY: `secret\\path with "quote"`
+    GROK_API_KEY: `secret\\path with "quote"`
   });
   assert.equal(unchanged.status, "unchanged");
   assert.equal(await readFile(target, "utf8"), original);
 
-  await updateSkillEnvFile(target, { PE_API_KEY: `new\\path with "quote"` });
-  assert.equal((await readSkillEnvFile(target)).PE_API_KEY, `new\\path with "quote"`);
+  await updateSkillEnvFile(target, { GROK_API_KEY: `new\\path with "quote"` });
+  assert.equal((await readSkillEnvFile(target)).GROK_API_KEY, `new\\path with "quote"`);
 });
 
 test("duplicate skill env assignments preserve the first runtime value", async () => {
   const directory = await mkdtemp(join(tmpdir(), "abelworkflow-skill-env-"));
   const target = join(directory, ".env");
-  await writeFile(target, "PE_API_KEY=first\nPE_API_KEY=second\n", { mode: 0o600 });
+  await writeFile(target, "GROK_API_KEY=first\nGROK_API_KEY=second\n", { mode: 0o600 });
 
   const existing = await readSkillEnvFile(target);
-  assert.equal(existing.PE_API_KEY, "first");
+  assert.equal(existing.GROK_API_KEY, "first");
 
-  await updateSkillEnvFile(target, { PE_API_KEY: existing.PE_API_KEY });
-  assert.equal(await readFile(target, "utf8"), "PE_API_KEY=first\n");
+  await updateSkillEnvFile(target, { GROK_API_KEY: existing.GROK_API_KEY });
+  assert.equal(await readFile(target, "utf8"), "GROK_API_KEY=first\n");
 });
 
 test("an empty first skill env assignment blocks stale duplicate credentials", async () => {
   const directory = await mkdtemp(join(tmpdir(), "abelworkflow-skill-env-"));
   const target = join(directory, ".env");
-  await writeFile(target, "PE_API_KEY=\nPE_API_KEY=stale\n", { mode: 0o600 });
+  await writeFile(target, "GROK_API_KEY=\nGROK_API_KEY=stale\n", { mode: 0o600 });
 
   const existing = await readSkillEnvFile(target);
-  assert.equal(existing.PE_API_KEY, "");
+  assert.equal(existing.GROK_API_KEY, "");
 
-  await updateSkillEnvFile(target, { PE_API_KEY: existing.PE_API_KEY });
+  await updateSkillEnvFile(target, { GROK_API_KEY: existing.GROK_API_KEY });
   assert.equal(await readFile(target, "utf8"), "");
-});
-
-test("prompt enhancer updates and clearing preserve unrelated provider credentials", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "abelworkflow-prompt-enhancer-env-"));
-  const target = join(directory, ".env");
-  await writeFile(target, [
-    "OPENAI_API_KEY=personal-openai",
-    "ANTHROPIC_API_KEY=personal-anthropic",
-    "PE_API_URL=https://old.example/v1",
-    "PE_API_KEY=old-secret",
-    "PE_MODEL=old-model",
-    ""
-  ].join("\n"), { mode: 0o600 });
-
-  await updateSkillEnvFile(target, buildPromptEnhancerEnvUpdates(
-    "https://new.example/v1",
-    "new-secret",
-    "new-model"
-  ));
-  await updateSkillEnvFile(target, buildPromptEnhancerEnvUpdates());
-
-  assert.deepEqual(await readSkillEnvFile(target), {
-    ANTHROPIC_API_KEY: "personal-anthropic",
-    OPENAI_API_KEY: "personal-openai"
-  });
 });
 
 test("Grok installer and env example use the packaged runtime default", async () => {
@@ -158,7 +131,7 @@ test("Grok installer and env example use the packaged runtime default", async ()
   const example = await readFile(new URL(".env.example", grokRoot), "utf8");
   const configuredModel = example.match(/^GROK_MODEL=(.+)$/mu)?.[1];
 
-  assert.equal(defaults.model, "grok-4.20-auto");
+  assert.equal(defaults.model, "grok-4.20-non-reasoning");
   assert.equal(grokDefaults.model, defaults.model);
   assert.equal(configuredModel, defaults.model);
 });
@@ -173,8 +146,7 @@ test("skill configuration forwards the complete custom Paths object", async () =
 
   for (const configure of [
     configureGrokSearchEnv,
-    configureContext7Env,
-    configurePromptEnhancerEnv
+    configureContext7Env
   ]) {
     const sentinel = new Error("stop after path capture");
     let received;

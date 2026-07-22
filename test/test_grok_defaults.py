@@ -83,7 +83,7 @@ class GrokDefaultsTests(unittest.TestCase):
         with mock.patch.dict(os.environ, {}, clear=True):
             self.assertEqual(module.Config().grok_model, defaults["model"])
 
-        self.assertEqual(defaults["model"], "grok-4.20-auto")
+        self.assertEqual(defaults["model"], "grok-4.20-non-reasoning")
 
 
 if __name__ == "__main__":

@@ -44,7 +44,6 @@ import {
   parsePiModelIds,
   resolveExistingPiApiConfig
 } from "../lib/providers/pi.mjs";
-import { hasPromptEnhancerApiConfig, resolvePromptEnhancerMode } from "../lib/providers/skills.mjs";
 import { stripJsonComments } from "../lib/config/jsonc.mjs";
 import {
   buildCliToolInstallCommand,
@@ -85,10 +84,9 @@ const expectedMenuDescriptors = [
   { value: "install", label: "仅同步工作流", group: "main" },
   { value: "grok-search", label: "配置 grok-search", hint: "技能", group: "skill" },
   { value: "context7", label: "配置 context7-auto-research", hint: "技能", group: "skill" },
-  { value: "prompt-enhancer", label: "配置 prompt-enhancer", hint: "技能", group: "skill" },
-  { value: "pi-cli", label: "安装/配置 Pi", hint: "CLI", group: "cli" },
-  { value: "codex-cli", label: "安装/配置 Codex", hint: "CLI", group: "cli" },
-  { value: "claude-cli", label: "安装/配置 Claude Code", hint: "CLI", group: "cli" },
+  { value: "pi-cli", label: "配置/安装 Pi", hint: "CLI", group: "cli" },
+  { value: "codex-cli", label: "配置/安装 Codex", hint: "CLI", group: "cli" },
+  { value: "claude-cli", label: "配置/安装 Claude Code", hint: "CLI", group: "cli" },
   { value: "exit", label: "退出", group: "exit" }
 ];
 
@@ -126,7 +124,6 @@ export {
   getPackageManagerInstallHelp,
   getPiApiPromptOptions,
   getRunCommandSpawnOptions,
-  hasPromptEnhancerApiConfig,
   inferPackageManagerFromCommandPath,
   inferPiApiFromBaseUrl,
   interactiveMenuDefaultValue,
@@ -149,7 +146,6 @@ export {
   resolveExistingPiApiConfig,
   resolvePasswordValue,
   resolvePath,
-  resolvePromptEnhancerMode,
   repoRoot,
   rmSync,
   selectOrCancel,

@@ -30,27 +30,27 @@ test("interactive menu CLI group exposes only aggregate entries in required orde
       .filter((descriptor) => descriptor.group === "cli")
       .map(({ value, label }) => ({ value, label })),
     [
-      { value: "pi-cli", label: "安装/配置 Pi" },
-      { value: "codex-cli", label: "安装/配置 Codex" },
-      { value: "claude-cli", label: "安装/配置 Claude Code" }
+      { value: "pi-cli", label: "配置/安装 Pi" },
+      { value: "codex-cli", label: "配置/安装 Codex" },
+      { value: "claude-cli", label: "配置/安装 Claude Code" }
     ]
   );
 });
 
-test("CLI tool submenus include install, API config, and back actions", () => {
+test("CLI tool submenus offer API configuration before install/update", () => {
   assert.deepEqual(buildCliToolMenuDescriptors("pi"), [
-    { value: "pi-install", label: "安装/更新 Pi" },
     { value: "pi-api", label: "配置 Pi API" },
+    { value: "pi-install", label: "安装/更新 Pi" },
     { value: "back", label: "返回上一级" }
   ]);
   assert.deepEqual(buildCliToolMenuDescriptors("codex"), [
-    { value: "codex-install", label: "安装/更新 Codex" },
     { value: "codex-api", label: "配置 Codex API" },
+    { value: "codex-install", label: "安装/更新 Codex" },
     { value: "back", label: "返回上一级" }
   ]);
   assert.deepEqual(buildCliToolMenuDescriptors("claude"), [
-    { value: "claude-install", label: "安装/更新 Claude Code" },
     { value: "claude-api", label: "配置 Claude Code API" },
+    { value: "claude-install", label: "安装/更新 Claude Code" },
     { value: "back", label: "返回上一级" }
   ]);
 });
