@@ -61,10 +61,7 @@ test("install migrates a legacy Pi prompts symlink without corrupting managed co
     const promptStat = lstatSync(join(promptsDir, commandName));
     if (process.platform === "win32") assert.ok(promptStat.isFile() || promptStat.isSymbolicLink());
     else assert.ok(promptStat.isSymbolicLink());
-    assert.equal(
-      readFileSync(commandPath, "utf8"),
-      renderWorkflowTemplate(sourceContent, { augmentContextEngine: false })
-    );
+    assert.equal(readFileSync(commandPath, "utf8"), sourceContent);
   } finally {
     rmSync(homeDir, { recursive: true, force: true });
   }

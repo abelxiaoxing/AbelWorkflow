@@ -4,98 +4,18 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
-import { buildInstallMetadata } from "../lib/installer/state.mjs";
 import {
-  applyClaudePermissionFeature,
-  applyClaudePermissionProfile,
   buildClaudeApiSettings,
   buildDefaultClaudeSettings,
   persistClaudeConfiguration
 } from "../lib/providers/claude.mjs";
 
-const broadPermissions = ["Bash", "Write", "Edit", "MultiEdit", "NotebookEdit"];
-
-test("Claude standard is the safe default and does not inject a default timeout", () => {
+test("Claude defaults to bypassPermissions YOLO mode and does not inject a default timeout", () => {
   const settings = buildDefaultClaudeSettings();
 
-  for (const permission of broadPermissions) {
-    assert.equal(settings.permissions.allow.includes(permission), false, permission);
-  }
+  assert.equal(settings.permissions.defaultMode, "bypassPermissions");
+  assert.deepEqual(settings.permissions.allow, []);
   assert.equal(Object.hasOwn(settings.env, "API_TIMEOUT_MS"), false);
-});
-
-test("Claude trusted permissions require an explicit profile selection", () => {
-  const standard = applyClaudePermissionProfile(undefined, { profile: "standard" });
-  const trusted = applyClaudePermissionProfile(undefined, { profile: "trusted" });
-
-  for (const permission of broadPermissions) {
-    assert.equal(standard.settings.permissions.allow.includes(permission), false, permission);
-    assert.equal(trusted.settings.permissions.allow.includes(permission), true, permission);
-    assert.equal(trusted.managedPermissions.includes(permission), true, permission);
-  }
-});
-
-test("Claude profile switching removes only metadata-owned permissions", () => {
-  const current = {
-    unknown: { keep: true },
-    apiTimeoutMs: 4321,
-    permissions: {
-      allow: ["Bash", "Write", "CustomPermission"],
-      deny: ["Bash(rm:*)", "CustomDeny"]
-    },
-    hooks: { PreToolUse: [{ matcher: "Bash", hooks: [] }] }
-  };
-  const switched = applyClaudePermissionProfile(current, {
-    profile: "standard",
-    previousManagedPermissions: ["Bash"]
-  });
-
-  assert.deepEqual(switched.settings.permissions.allow, ["Write", "CustomPermission"]);
-  assert.deepEqual(switched.settings.permissions.deny, current.permissions.deny);
-  assert.deepEqual(switched.settings.hooks, current.hooks);
-  assert.deepEqual(switched.settings.unknown, { keep: true });
-  assert.equal(switched.settings.apiTimeoutMs, 4321);
-  assert.deepEqual(switched.managedPermissions, []);
-});
-
-test("Claude standard never removes a broad user permission without ownership", () => {
-  const result = applyClaudePermissionProfile({
-    permissions: { allow: ["Bash", "Write", "CustomPermission"], deny: [] }
-  }, {
-    profile: "standard",
-    previousManagedPermissions: []
-  });
-
-  assert.deepEqual(result.settings.permissions.allow, ["Bash", "Write", "CustomPermission"]);
-  assert.equal(result.changed, false);
-});
-
-test("Claude augment changes only its own permission and preserves profile ownership", () => {
-  const fresh = applyClaudePermissionFeature(undefined, { augmentContextEngine: true });
-  assert.deepEqual(fresh.settings, {
-    permissions: { allow: ["mcp__augment-context-engine"] }
-  });
-
-  const enabled = applyClaudePermissionFeature({
-    permissions: { allow: ["Bash", "CustomPermission"], deny: ["CustomDeny"] }
-  }, {
-    augmentContextEngine: true,
-    previousManagedPermissions: ["Bash"]
-  });
-  assert.deepEqual(enabled.settings.permissions.allow, [
-    "Bash",
-    "CustomPermission",
-    "mcp__augment-context-engine"
-  ]);
-  assert.deepEqual(enabled.settings.permissions.deny, ["CustomDeny"]);
-  assert.deepEqual(enabled.managedPermissions, ["Bash", "mcp__augment-context-engine"]);
-
-  const disabled = applyClaudePermissionFeature(enabled.settings, {
-    augmentContextEngine: false,
-    previousManagedPermissions: enabled.managedPermissions
-  });
-  assert.deepEqual(disabled.settings.permissions.allow, ["Bash", "CustomPermission"]);
-  assert.deepEqual(disabled.managedPermissions, ["Bash"]);
 });
 
 test("Claude API update preserves unknown env, deny, hooks, timeout, and settings fields", () => {
@@ -110,14 +30,16 @@ test("Claude API update preserves unknown env, deny, hooks, timeout, and setting
     }
   };
   const next = buildClaudeApiSettings(current, {
-    authType: "api_key",
     baseUrl: "https://relay.example",
     key: "new-secret",
     model: "claude-custom",
     insecureTls: false
   });
 
-  assert.deepEqual(next.permissions, current.permissions);
+  assert.deepEqual(next.permissions, {
+    ...current.permissions,
+    defaultMode: "bypassPermissions"
+  });
   assert.deepEqual(next.hooks, current.hooks);
   assert.deepEqual(next.unknown, { keep: true });
   assert.equal(next.env.API_TIMEOUT_MS, "7654321");
@@ -128,24 +50,23 @@ test("Claude API update preserves unknown env, deny, hooks, timeout, and setting
 });
 
 test("fresh Claude API settings retain safe non-permission defaults", () => {
-  const apiSettings = buildClaudeApiSettings({}, {
-    authType: "api_key",
+  const result = buildClaudeApiSettings({}, {
     baseUrl: "https://relay.example",
     key: "new-secret",
     model: "claude-custom",
     insecureTls: false
   });
-  const result = applyClaudePermissionProfile(apiSettings, { profile: "standard" });
 
-  assert.equal(result.settings.env.DISABLE_TELEMETRY, "1");
-  assert.equal(result.settings.env.DISABLE_ERROR_REPORTING, "1");
-  assert.equal(result.settings.env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC, "1");
-  assert.equal(result.settings.language, "Chinese");
-  assert.equal(result.settings.alwaysThinkingEnabled, true);
-  assert.equal(result.settings.includeCoAuthoredBy, false);
-  assert.deepEqual(result.settings.hooks, {});
-  assert.deepEqual(result.settings.permissions.allow, []);
-  assert.equal(Object.hasOwn(result.settings.env, "API_TIMEOUT_MS"), false);
+  assert.equal(result.env.DISABLE_TELEMETRY, "1");
+  assert.equal(result.env.DISABLE_ERROR_REPORTING, "1");
+  assert.equal(result.env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC, "1");
+  assert.equal(result.language, "Chinese");
+  assert.equal(result.alwaysThinkingEnabled, true);
+  assert.equal(result.includeCoAuthoredBy, false);
+  assert.deepEqual(result.hooks, {});
+  assert.equal(result.permissions.defaultMode, "bypassPermissions");
+  assert.deepEqual(result.permissions.allow, []);
+  assert.equal(Object.hasOwn(result.env, "API_TIMEOUT_MS"), false);
 });
 
 test("Claude settings and meta configuration use sensitive writes", {
@@ -172,19 +93,4 @@ test("Claude settings and meta configuration use sensitive writes", {
   } finally {
     await rm(root, { recursive: true, force: true });
   }
-});
-
-test("Claude profile and permission ownership survive installer force-style metadata rebuilds", () => {
-  const metadata = buildInstallMetadata({
-    previousMetadata: {
-      schemaVersion: 2,
-      claudePermissionProfile: "trusted",
-      managedClaudePermissions: ["Bash", "Write"]
-    },
-    packageVersion: "1.0.0",
-    managedClaudePermissions: ["Bash", "Write"]
-  });
-
-  assert.equal(metadata.claudePermissionProfile, "trusted");
-  assert.deepEqual(metadata.managedClaudePermissions, ["Bash", "Write"]);
 });

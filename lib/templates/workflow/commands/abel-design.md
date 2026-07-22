@@ -47,11 +47,11 @@ argument-hint: [requirement | --change <change_name>]
 - Generate a provisional kebab-case change name and check `openspec list --changes --json`. Recompute and confirm it from the final Gate A scope before creation. Persist nothing yet.
 
 ## Phase 1 — Evidence Exploration (read-only)
-- {{CODEBASE_RETRIEVAL_POLICY}}
+- Use local codebase retrieval with `rg`, `rg --files`, `git grep`, and direct file reads.
 - Single context boundary → main agent explores directly.
 - Multiple independent context boundaries, when the platform permits → dispatch parallel Explore subagents:
   - Divide by context boundary (NOT functional role); each boundary self-contained.
-  - Each subagent receives: {{CODEBASE_RETRIEVAL_MANDATORY_RULE}}, a clear scope, and the mandatory JSON output schema:
+  - Each subagent receives: mandatory use of the codebase retrieval policy, a clear scope, and the mandatory JSON output schema:
 {
   "module_name": "所探索的上下文边界",
   "existing_structures": ["关键结构/模式"],
@@ -64,11 +64,11 @@ argument-hint: [requirement | --change <change_name>]
 }
 - Validate every subagent JSON before aggregation; aggregate constraints, dependencies, risks, conflicts and questions into the Decision Ledger.
 - Audit existing codebase patterns:
-  {{CODEBASE_RETRIEVAL_PATTERN_AUDIT}}
+  Use `rg`, `rg --files`, `git grep`, and direct file reads to validate against existing codebase patterns.
 - On-demand /context7-auto-research: verify candidate libraries/APIs against official contracts.
 - On-demand /grok-search: architectural patterns and best practices for candidate directions.
 - PBT boundary screening: probe empty input, idempotency, ordering, size/value bounds, state-transition legality → feed the question list for Phase 2.
-- Reference: {{CODEBASE_RETRIEVAL_STRUCTURE_REFERENCE}}
+- Reference: Inspect codebase structure with `rg --files`, `git grep`, and direct file reads.
 
 ## Phase 2 — Behavior Clarification Loop (multiple rounds allowed)
 - Cover WHAT only: goal, scope, non-goals, observable scenarios/success criteria, failure behavior, and data/security/privacy/compatibility policies.

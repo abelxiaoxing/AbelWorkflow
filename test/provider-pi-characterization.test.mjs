@@ -1,18 +1,18 @@
 import * as fixtures from "./cli-characterization-fixtures.mjs";
 Object.assign(globalThis, fixtures);
 
-test("Pi gpt config builder preserves existing model overrides and settings defaults", () => {
+test("Pi current-provider config builder preserves existing model overrides and settings defaults", () => {
   const existing = {
     providers: {
       other: { baseUrl: "https://other.example/v1" },
-      gpt: {
+      relay: {
         baseUrl: "https://old.example/v1",
         api: "openai-responses",
         apiKey: "old-key",
         compat: { supportsUsageInStreaming: false },
         models: [
           {
-            id: "gpt-5.5",
+            id: "relay-a",
             name: "GPT Custom",
             reasoning: false,
             input: ["text"],
@@ -26,19 +26,19 @@ test("Pi gpt config builder preserves existing model overrides and settings defa
   };
 
   const nextModels = buildPiModelsConfig(existing, {
+    providerId: "relay",
     baseUrl: "https://new.example/v1",
     api: "openai-responses",
-    apiKey: "new-key",
-    modelIds: ["gpt-5.5", "gpt-new"]
+    modelIds: ["relay-a", "relay-new"]
   });
 
   assert.equal(nextModels.providers.other.baseUrl, "https://other.example/v1");
-  assert.equal(nextModels.providers.gpt.baseUrl, "https://new.example/v1");
-  assert.equal(Object.hasOwn(nextModels.providers.gpt, "apiKey"), false);
-  assert.equal(nextModels.providers.gpt.compat.supportsUsageInStreaming, false);
-  assert.equal(nextModels.providers.gpt.compat.supportsDeveloperRole, false);
-  assert.deepEqual(nextModels.providers.gpt.models[0], {
-    id: "gpt-5.5",
+  assert.equal(nextModels.providers.relay.baseUrl, "https://new.example/v1");
+  assert.equal(Object.hasOwn(nextModels.providers.relay, "apiKey"), false);
+  assert.equal(nextModels.providers.relay.compat.supportsUsageInStreaming, false);
+  assert.equal(nextModels.providers.relay.compat.supportsDeveloperRole, false);
+  assert.deepEqual(nextModels.providers.relay.models[0], {
+    id: "relay-a",
     name: "GPT Custom",
     reasoning: false,
     input: ["text"],
@@ -46,18 +46,18 @@ test("Pi gpt config builder preserves existing model overrides and settings defa
     maxTokens: 2000,
     compat: { maxTokensField: "max_tokens" }
   });
-  assert.deepEqual(nextModels.providers.gpt.models[1], {
-    id: "gpt-new",
-    name: "gpt-new",
+  assert.deepEqual(nextModels.providers.relay.models[1], {
+    id: "relay-new",
+    name: "relay-new",
     reasoning: true,
     input: ["text", "image"],
     contextWindow: 262144,
     maxTokens: 64000
   });
 
-  assert.deepEqual(buildPiSettingsConfig({}, "gpt-5.5"), {
-    defaultProvider: "gpt",
-    defaultModel: "gpt-5.5",
+  assert.deepEqual(buildPiSettingsConfig({}, "relay", "relay-a"), {
+    defaultProvider: "relay",
+    defaultModel: "relay-a",
     defaultThinkingLevel: "high",
     enableSkillCommands: true
   });
@@ -66,14 +66,14 @@ test("Pi gpt config builder preserves existing model overrides and settings defa
 test("Pi auth config preserves provider environment settings", () => {
   assert.deepEqual(buildPiAuthConfig({
     other: { type: "api_key", key: "other-key" },
-    gpt: {
+    relay: {
       type: "api_key",
       key: "old-key",
       env: { HTTPS_PROXY: "http://127.0.0.1:7890" }
     }
-  }, "new-key"), {
+  }, "relay", "new-key"), {
     other: { type: "api_key", key: "other-key" },
-    gpt: {
+    relay: {
       type: "api_key",
       key: "new-key",
       env: {
@@ -88,10 +88,10 @@ test("Pi extension does not disable TLS verification for the process", () => {
   assert.doesNotMatch(content, /NODE_TLS_REJECT_UNAUTHORIZED/u);
 });
 
-test("Pi gpt config toggles only the managed insecure TLS request marker", () => {
+test("Pi current-provider config toggles only the managed insecure TLS request marker", () => {
   const existing = {
     providers: {
-      gpt: {
+      relay: {
         headers: {
           "x-existing": "keep",
           [piInsecureTlsHeader]: "https://old.example"
@@ -100,6 +100,7 @@ test("Pi gpt config toggles only the managed insecure TLS request marker", () =>
     }
   };
   const options = {
+    providerId: "relay",
     baseUrl: "https://relay.example/v1",
     api: "openai-responses",
     apiKey: "secret",
@@ -107,35 +108,60 @@ test("Pi gpt config toggles only the managed insecure TLS request marker", () =>
   };
 
   const strict = buildPiModelsConfig(existing, { ...options, insecureTls: false });
-  assert.deepEqual(strict.providers.gpt.headers, { "x-existing": "keep" });
+  assert.deepEqual(strict.providers.relay.headers, { "x-existing": "keep" });
 
   const insecure = buildPiModelsConfig(existing, { ...options, insecureTls: true });
-  assert.equal(insecure.providers.gpt.headers[piInsecureTlsHeader], "https://relay.example");
-  assert.equal(insecure.providers.gpt.headers["x-existing"], "keep");
+  assert.equal(insecure.providers.relay.headers[piInsecureTlsHeader], "https://relay.example");
+  assert.equal(insecure.providers.relay.headers["x-existing"], "keep");
 });
 
-test("resolveExistingPiApiConfig reads gpt provider and default model", () => {
+test("resolveExistingPiApiConfig reads the current default provider URL and API key", () => {
   const config = resolveExistingPiApiConfig({
     providers: {
-      gpt: {
+      ignored: { baseUrl: "https://ignored.example/v1", apiKey: "ignored-key" },
+      relay: {
         baseUrl: "https://example.com/v1",
         api: "openai-completions",
-        apiKey: "secret",
-        models: [{ id: "gpt-a" }, { id: "gpt-b" }]
+        apiKey: "stale-key",
+        models: [{ id: "relay-a" }, { id: "relay-b" }]
       }
     }
   }, {
-    defaultProvider: "gpt",
-    defaultModel: "gpt-b"
+    defaultProvider: "relay",
+    defaultModel: "relay-b"
+  }, {
+    ignored: { type: "api_key", key: "ignored-auth-key" },
+    relay: { type: "api_key", key: "relay-auth-key" }
   });
 
   assert.deepEqual(config, {
+    providerId: "relay",
     baseUrl: "https://example.com/v1",
     api: "openai-completions",
-    apiKey: "secret",
-    modelIds: ["gpt-a", "gpt-b"],
-    defaultModel: "gpt-b"
+    apiKey: "relay-auth-key",
+    modelIds: ["relay-a", "relay-b"],
+    defaultModel: "relay-b"
   });
 });
 
-
+test("resolveExistingPiApiConfig leaves unrecognized current-provider fields empty", () => {
+  assert.deepEqual(resolveExistingPiApiConfig({
+    providers: {
+      other: {
+        baseUrl: "https://other.example/v1",
+        api: "openai-responses",
+        apiKey: "other-key",
+        models: [{ id: "other-model" }]
+      }
+    }
+  }, {
+    defaultProvider: "missing"
+  }), {
+    providerId: "",
+    baseUrl: "",
+    api: "",
+    apiKey: "",
+    modelIds: [],
+    defaultModel: ""
+  });
+});

@@ -36,7 +36,7 @@ async function withFixture(run) {
   };
   try {
     await writeFixtureFile(packageRoot, "package.json", `${JSON.stringify({ version: "1.0.0" })}\n`);
-    await writeFixtureFile(workflowTemplateRoot, "AGENTS.md", "policy={{CODEBASE_RETRIEVAL_POLICY}}\n");
+    await writeFixtureFile(workflowTemplateRoot, "AGENTS.md", "policy=Use local codebase retrieval\n");
     await writeFixtureFile(workflowTemplateRoot, "commands/abel-init.md", "# init\n");
     await writeFixtureFile(workflowTemplateRoot, "gitignore.template", "tmp/\n");
     await writeFixtureFile(packageRoot, "README.md", "# AbelWorkflow\n");
@@ -60,16 +60,14 @@ async function persistSyncMetadata(paths, syncResult, previousMetadata = syncRes
   const metadata = buildInstallMetadata({
     previousMetadata,
     packageVersion: syncResult.packageVersion,
-    features: syncResult.features,
     managedFiles: syncResult.managedFiles,
-    managedClaudePermissions: previousMetadata.managedClaudePermissions ?? [],
     linkedTargets: previousMetadata.linkedTargets ?? {}
   });
   await writeInstallMetadata(paths, metadata);
   return metadata;
 }
 
-test("asset sync renders immutable templates and never manages user state", async () => {
+test("asset sync copies immutable templates and never manages user state", async () => {
   await withFixture(async ({ paths }) => {
     const sourceAgents = await readFile(join(paths.workflowTemplateRoot, "AGENTS.md"), "utf8");
     await writeFixtureFile(paths.agentsDir, ".skill-lock.json", "{\"user\":true}\n");
@@ -77,7 +75,6 @@ test("asset sync renders immutable templates and never manages user state", asyn
 
     const result = await syncManagedFiles({
       paths,
-      featureState: { augmentContextEngine: false },
       force: false
     });
 
@@ -113,9 +110,8 @@ test("dev-browser dist is managed while generated skill state stays excluded", a
     }
 
     const result = await syncManagedFiles({
-      paths,
-      featureState: { augmentContextEngine: false }
-    });
+      paths
+      });
 
     assert.equal(
       await readFile(join(paths.agentsDir, entrypoint), "utf8"),
@@ -134,7 +130,7 @@ test("dev-browser dist is managed while generated skill state stays excluded", a
 
 test("metadata v2 hashes and repeated sync are stable with zero writes", async () => {
   await withFixture(async ({ paths }) => {
-    const first = await syncManagedFiles({ paths, featureState: { augmentContextEngine: false } });
+    const first = await syncManagedFiles({ paths });
     const metadata = await persistSyncMetadata(paths, first);
     assert.equal(metadata.schemaVersion, 2);
     assert.equal(metadata.packageVersion, "1.0.0");
@@ -146,7 +142,7 @@ test("metadata v2 hashes and repeated sync are stable with zero writes", async (
     const metadataPath = join(paths.agentsDir, paths.installMetadataName);
     const fixedTime = new Date("2021-01-01T00:00:00.000Z");
     await utimes(metadataPath, fixedTime, fixedTime);
-    const second = await syncManagedFiles({ paths, featureState: { augmentContextEngine: false } });
+    const second = await syncManagedFiles({ paths });
     const secondMetadata = await persistSyncMetadata(paths, second);
 
     assert.deepEqual(second.report.created, []);
@@ -155,6 +151,35 @@ test("metadata v2 hashes and repeated sync are stable with zero writes", async (
     assert.equal(second.report.unchanged.length, Object.keys(second.managedFiles).length);
     assert.deepEqual(secondMetadata, metadata);
     assert.equal((await stat(metadataPath)).mtimeMs, fixedTime.getTime());
+  });
+});
+
+test("partial sync backs up and updates only changed files", async () => {
+  await withFixture(async ({ paths }) => {
+    const first = await syncManagedFiles({ paths });
+    await persistSyncMetadata(paths, first);
+    const unchangedPath = join(paths.agentsDir, "commands", "abel-init.md");
+    const changedPath = join(paths.agentsDir, "README.md");
+    const fixedTime = new Date("2020-01-01T00:00:00.000Z");
+    await utimes(unchangedPath, fixedTime, fixedTime);
+    await utimes(changedPath, fixedTime, fixedTime);
+    await writeFixtureFile(paths.packageRoot, "README.md", "# AbelWorkflow updated\n");
+
+    const result = await syncManagedFiles({ paths });
+
+    assert.deepEqual(result.report.updated, ["README.md"]);
+    assert.ok(result.report.unchanged.includes("commands/abel-init.md"));
+    assert.equal((await stat(unchangedPath)).mtimeMs, fixedTime.getTime());
+    assert.notEqual((await stat(changedPath)).mtimeMs, fixedTime.getTime());
+    assert.equal(
+      (await readdirNames(paths.agentsDir)).filter((name) => name.startsWith("README.md.abelworkflow.bak.")).length,
+      1
+    );
+    assert.equal(
+      (await readdirNames(join(paths.agentsDir, "commands")))
+        .some((name) => name.startsWith("abel-init.md.abelworkflow.bak.")),
+      false
+    );
   });
 });
 
@@ -182,7 +207,7 @@ for (const { label, relativePath, force } of [
       });
 
       await assert.rejects(
-        syncManagedFiles({ paths, featureState: { augmentContextEngine: false }, force }),
+        syncManagedFiles({ paths, force }),
         /Invalid managed file path/u
       );
 
@@ -208,7 +233,6 @@ test("v1 metadata ignores legacy ownership paths without inspecting external fil
 
     const result = await syncManagedFiles({
       paths,
-      featureState: { augmentContextEngine: false },
       force: false
     });
 
@@ -237,7 +261,7 @@ test("metadata v2 rejects symlinked ancestors that escape the deployment root", 
     });
 
     await assert.rejects(
-      syncManagedFiles({ paths, featureState: { augmentContextEngine: false }, force: false }),
+      syncManagedFiles({ paths, force: false }),
       /Invalid managed file path/u
     );
     assert.equal(await readFile(victimPath, "utf8"), "outside\n");
@@ -262,10 +286,10 @@ test("v1 metadata treats legacy files as unknown ownership and preserves prior s
       linkedTargets: { "/target": { sourcePath: "/source", kind: "file", mode: "copy" } }
     });
 
-    const result = await syncManagedFiles({ paths, featureState: { augmentContextEngine: false } });
+    const result = await syncManagedFiles({ paths });
     const metadata = await persistSyncMetadata(paths, result);
 
-    assert.ok(result.report.updated.includes("AGENTS.md"));
+    assert.ok(result.report.unchanged.includes("AGENTS.md"));
     assert.ok(result.report.conflicts.includes("commands/abel-init.md"));
     assert.equal(await readFile(join(paths.agentsDir, "commands/abel-init.md"), "utf8"), "user init\n");
     assert.equal(await readFile(join(paths.agentsDir, "commands/removed.md"), "utf8"), "user legacy command\n");
@@ -274,8 +298,8 @@ test("v1 metadata treats legacy files as unknown ownership and preserves prior s
     assert.equal(Object.hasOwn(result.managedFiles, "commands/removed.md"), false);
     assert.equal(metadata.schemaVersion, 2);
     assert.equal(Object.hasOwn(metadata, "managedChildren"), false);
-    assert.deepEqual(metadata.features, { augmentContextEngine: false });
-    assert.deepEqual(metadata.managedClaudePermissions, ["mcp__augment-context-engine"]);
+    assert.equal(Object.hasOwn(metadata, "features"), false);
+    assert.equal(Object.hasOwn(metadata, "managedClaudePermissions"), false);
     assert.deepEqual(metadata.linkedTargets, { "/target": { sourcePath: "/source", kind: "file", mode: "copy" } });
   });
 });
@@ -291,7 +315,6 @@ test("force backs up v1 collisions without deleting legacy stale paths", async (
 
     const result = await syncManagedFiles({
       paths,
-      featureState: { augmentContextEngine: false },
       force: true
     });
 
@@ -306,19 +329,19 @@ test("force backs up v1 collisions without deleting legacy stale paths", async (
 
 test("user-modified managed files conflict normally and force only exact manifest paths", async () => {
   await withFixture(async ({ paths }) => {
-    const first = await syncManagedFiles({ paths, featureState: { augmentContextEngine: false } });
+    const first = await syncManagedFiles({ paths });
     await persistSyncMetadata(paths, first);
     await writeFixtureFile(paths.agentsDir, "AGENTS.md", "user agents\n");
     await writeFixtureFile(paths.agentsDir, ".skill-lock.json", "{\"user\":true}\n");
     await writeFixtureFile(paths.agentsDir, "unknown.txt", "keep\n");
 
-    const normal = await syncManagedFiles({ paths, featureState: { augmentContextEngine: true }, force: false });
+    const normal = await syncManagedFiles({ paths, force: false });
     assert.equal(await readFile(join(paths.agentsDir, "AGENTS.md"), "utf8"), "user agents\n");
     assert.ok(normal.report.conflicts.includes("AGENTS.md"));
     assert.equal(normal.managedFiles["AGENTS.md"], first.managedFiles["AGENTS.md"]);
 
-    const forced = await syncManagedFiles({ paths, featureState: { augmentContextEngine: true }, force: true });
-    assert.match(await readFile(join(paths.agentsDir, "AGENTS.md"), "utf8"), /mcp__augment-context-engine/u);
+    const forced = await syncManagedFiles({ paths, force: true });
+    assert.match(await readFile(join(paths.agentsDir, "AGENTS.md"), "utf8"), /Use local codebase retrieval/u);
     assert.ok(forced.report.updated.includes("AGENTS.md"));
     assert.equal(await readFile(join(paths.agentsDir, ".skill-lock.json"), "utf8"), "{\"user\":true}\n");
     assert.equal(await readFile(join(paths.agentsDir, "unknown.txt"), "utf8"), "keep\n");
@@ -334,7 +357,6 @@ test("unowned collisions are not claimed and force never moves obstructing direc
 
     const normal = await syncManagedFiles({
       paths,
-      featureState: { augmentContextEngine: false },
       force: false
     });
     assert.ok(normal.report.conflicts.includes("README.md"));
@@ -342,7 +364,6 @@ test("unowned collisions are not claimed and force never moves obstructing direc
 
     const result = await syncManagedFiles({
       paths,
-      featureState: { augmentContextEngine: false },
       force: true
     });
 
@@ -366,7 +387,6 @@ test("managed asset symlinks conflict normally and are backed up before forced r
 
     const normal = await syncManagedFiles({
       paths,
-      featureState: { augmentContextEngine: false },
       force: false
     });
 
@@ -375,7 +395,6 @@ test("managed asset symlinks conflict normally and are backed up before forced r
 
     const forced = await syncManagedFiles({
       paths,
-      featureState: { augmentContextEngine: false },
       force: true
     });
 
@@ -396,21 +415,21 @@ test("removed managed files are deleted only when unchanged or forced", async ()
   await withFixture(async ({ paths }) => {
     const commandPath = join(paths.agentsDir, "commands", "abel-init.md");
     const sourceCommandPath = join(paths.workflowTemplateRoot, "commands", "abel-init.md");
-    const first = await syncManagedFiles({ paths, featureState: { augmentContextEngine: false } });
+    const first = await syncManagedFiles({ paths });
     await persistSyncMetadata(paths, first);
     await rm(sourceCommandPath);
 
-    const removed = await syncManagedFiles({ paths, featureState: { augmentContextEngine: false } });
+    const removed = await syncManagedFiles({ paths });
     assert.ok(removed.report.removed.includes("commands/abel-init.md"));
     await assert.rejects(readFile(commandPath), (error) => error.code === "ENOENT");
 
     await writeFile(sourceCommandPath, "# restored\n", "utf8");
-    const restored = await syncManagedFiles({ paths, featureState: { augmentContextEngine: false } });
+    const restored = await syncManagedFiles({ paths });
     await persistSyncMetadata(paths, restored);
     await writeFile(commandPath, "user command\n", "utf8");
     await rm(sourceCommandPath);
 
-    const conflicted = await syncManagedFiles({ paths, featureState: { augmentContextEngine: false } });
+    const conflicted = await syncManagedFiles({ paths });
     assert.ok(conflicted.report.conflicts.includes("commands/abel-init.md"));
     assert.equal(
       conflicted.managedFiles["commands/abel-init.md"],
@@ -419,7 +438,7 @@ test("removed managed files are deleted only when unchanged or forced", async ()
     assert.equal(await readFile(commandPath, "utf8"), "user command\n");
     await persistSyncMetadata(paths, conflicted);
 
-    const forced = await syncManagedFiles({ paths, featureState: { augmentContextEngine: false }, force: true });
+    const forced = await syncManagedFiles({ paths, force: true });
     assert.ok(forced.report.removed.includes("commands/abel-init.md"));
     assert.equal((await readdirNames(join(paths.agentsDir, "commands")))
       .some((name) => name.startsWith("abel-init.md.abelworkflow.bak.")), true);
@@ -430,14 +449,14 @@ test("force preserves an obstructing directory at a stale managed file path and 
   await withFixture(async ({ paths }) => {
     const relativePath = "commands/abel-init.md";
     const targetPath = join(paths.agentsDir, relativePath);
-    const first = await syncManagedFiles({ paths, featureState: { augmentContextEngine: false } });
+    const first = await syncManagedFiles({ paths });
     await persistSyncMetadata(paths, first);
     await rm(targetPath);
     await mkdir(targetPath, { recursive: true });
     await writeFixtureFile(targetPath, ".env", "SECRET=keep\n");
     await rm(join(paths.workflowTemplateRoot, relativePath));
 
-    const result = await syncManagedFiles({ paths, featureState: { augmentContextEngine: false }, force: true });
+    const result = await syncManagedFiles({ paths, force: true });
 
     assert.ok(result.report.conflicts.includes(relativePath));
     assert.ok(result.report.preserved.includes(relativePath));

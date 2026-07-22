@@ -17,7 +17,6 @@ const targetModules = [
   "lib/config/toml.mjs",
   "lib/installer/install.mjs",
   "lib/installer/assets.mjs",
-  "lib/installer/render.mjs",
   "lib/installer/links.mjs",
   "lib/installer/state.mjs",
   "lib/providers/claude.mjs",

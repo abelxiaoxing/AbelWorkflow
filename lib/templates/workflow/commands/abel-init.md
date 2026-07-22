@@ -16,12 +16,10 @@ tags: [openspec, init, setup]
 2. Verify `openspec` availability via `openspec --version`.
 3. If missing, `npm install -g @fission-ai/openspec@latest`, then re-check version.
 4. Run `openspec init` (or `openspec update` for existing projects).
-5. {{AUGMENT_CONTEXT_ENGINE_VALIDATION}}
-6. Verify required skills:
+5. Verify required skills:
    - Skills: `/dev-browser` `/context7-auto-research` `/grok-search`
-7. Output summary with ✓/✗:
+6. Output summary with ✓/✗:
    - OpenSpec installation
    - Project initialization
-   - MCP availability if enabled
    - Required skills availability
 <!-- ABEL:END -->

@@ -33,12 +33,12 @@ test("updatePiAuthFile creates auth.json with mode 0600", {
 }, async () => {
   const { root, authPath } = createFixture();
   try {
-    await updatePiAuthFile(authPath, "new-key");
+    await updatePiAuthFile(authPath, "relay", "new-key");
 
     assert.equal(statSync(authPath).mode & 0o777, 0o600);
     assert.equal(existsSync(`${authPath}.lock`), false);
     assert.deepEqual(JSON.parse(readFileSync(authPath, "utf8")), {
-      gpt: { type: "api_key", key: "new-key" }
+      relay: { type: "api_key", key: "new-key" }
     });
   } finally {
     rmSync(root, { recursive: true, force: true });
@@ -52,7 +52,7 @@ test("updatePiAuthFile tightens existing auth and backup permissions", {
   try {
     writeAuth(authPath, { other: { type: "api_key", key: "other-key" } }, 0o644);
 
-    await updatePiAuthFile(authPath, "new-key");
+    await updatePiAuthFile(authPath, "relay", "new-key");
 
     const backupName = readdirSync(join(root, ".pi", "agent"))
       .find((name) => name.startsWith("auth.json.abelworkflow.bak."));
@@ -73,7 +73,7 @@ test("updatePiAuthFile rereads and merges auth.json inside the Pi lock", async (
     });
     const release = await lockfile.lock(authPath, { realpath: false });
     let settled = false;
-    const updating = updatePiAuthFile(authPath, "new-key").then(() => {
+    const updating = updatePiAuthFile(authPath, "gpt", "new-key").then(() => {
       settled = true;
     });
 
@@ -103,7 +103,7 @@ test("updatePiAuthFile rejects invalid auth.json without overwriting it", async 
   try {
     writeFileSync(authPath, "{ invalid\n", { encoding: "utf8", mode: 0o600 });
 
-    await assert.rejects(updatePiAuthFile(authPath, "new-key"), SyntaxError);
+    await assert.rejects(updatePiAuthFile(authPath, "gpt", "new-key"), SyntaxError);
     assert.equal(readFileSync(authPath, "utf8"), "{ invalid\n");
     assert.equal(existsSync(`${authPath}.lock`), false);
   } finally {

@@ -1,14 +1,21 @@
 import assert from "node:assert/strict";
+import { EventEmitter } from "node:events";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { PassThrough } from "node:stream";
 import test from "node:test";
 
 import {
+  assertConfigurablePiProvider,
   assertSupportedPiVersion,
   buildPiModelsConfig,
+  detectPiEffectiveModel,
+  parsePiRpcEffectiveModel,
   persistPiConfiguration,
-  readExistingPiConfiguration
+  readExistingPiConfiguration,
+  resolveExistingPiApiConfig,
+  runPiRpcCommand
 } from "../lib/providers/pi.mjs";
 
 test("Pi requires auth-only custom provider support from version 0.80.0", () => {
@@ -50,28 +57,234 @@ test("Pi reads auth before models and settings", async () => {
   assert.equal(result.auth.gpt.key, "auth-key");
 });
 
-test("Pi models config removes only the managed GPT API key", () => {
+test("Pi uses the runtime-selected provider instead of a stale saved default", () => {
+  const config = resolveExistingPiApiConfig({
+    providers: {
+      htjg: {
+        baseUrl: "https://saved.example/v1",
+        api: "openai-completions",
+        apiKey: "htjg-key",
+        models: [{ id: "k3", baseUrl: "https://model.example/v1" }]
+      }
+    }
+  }, {
+    defaultProvider: "gpt",
+    defaultModel: "kimi-for-coding"
+  }, {
+    gpt: { type: "api_key", key: "orphan-key" }
+  }, {
+    provider: "htjg",
+    id: "k3",
+    api: "openai-responses",
+    baseUrl: "https://relay.example/v1"
+  });
+
+  assert.deepEqual(config, {
+    providerId: "htjg",
+    baseUrl: "https://relay.example/v1",
+    api: "openai-responses",
+    apiKey: "htjg-key",
+    modelIds: ["k3"],
+    defaultModel: "k3"
+  });
+});
+
+test("Pi rejects a saved default that is absent from the configured models", () => {
+  assert.deepEqual(resolveExistingPiApiConfig({
+    providers: {
+      htjg: {
+        baseUrl: "https://relay.example/v1",
+        api: "openai-completions",
+        apiKey: "htjg-key",
+        models: [{ id: "k3" }]
+      }
+    }
+  }, {
+    defaultProvider: "gpt",
+    defaultModel: "kimi-for-coding"
+  }, {
+    gpt: { type: "api_key", key: "orphan-key" }
+  }), {
+    providerId: "",
+    baseUrl: "",
+    api: "",
+    apiKey: "",
+    modelIds: [],
+    defaultModel: ""
+  });
+});
+
+test("Pi RPC parser extracts only the successful effective model response", () => {
+  const output = [
+    "not-json startup output",
+    JSON.stringify({ type: "event", event: { type: "agent_start" } }),
+    JSON.stringify({
+      id: "abelworkflow-provider",
+      type: "response",
+      command: "get_state",
+      success: true,
+      data: {
+        model: {
+          provider: "htjg",
+          id: "k3",
+          api: "openai-completions",
+          baseUrl: "https://relay.example/v1"
+        }
+      }
+    })
+  ].join("\n");
+
+  assert.deepEqual(parsePiRpcEffectiveModel(output), {
+    provider: "htjg",
+    id: "k3",
+    api: "openai-completions",
+    baseUrl: "https://relay.example/v1"
+  });
+  assert.equal(parsePiRpcEffectiveModel('{"type":"response","command":"get_state","success":false}'), undefined);
+});
+
+test("Pi effective-model probe runs RPC in offline no-session mode", async () => {
+  let call;
+  const model = await detectPiEffectiveModel(async (command, args, options) => {
+    call = { command, args, options };
+    return {
+      status: 0,
+      stdout: JSON.stringify({
+        id: "abelworkflow-provider",
+        type: "response",
+        command: "get_state",
+        success: true,
+        data: {
+          model: {
+            provider: "relay",
+            id: "relay-model",
+            api: "openai-completions",
+            baseUrl: "https://relay.example/v1"
+          }
+        }
+      }),
+      stderr: ""
+    };
+  });
+
+  assert.equal(call.command, "pi");
+  assert.deepEqual(call.args, [
+    "--mode", "rpc",
+    "--no-session",
+    "--offline",
+    "--no-context-files",
+    "--no-skills",
+    "--no-prompt-templates",
+    "--no-themes"
+  ]);
+  assert.match(call.options.input, /"type":"get_state"/u);
+  assert.equal(call.options.timeout, 20000);
+  assert.deepEqual(model, {
+    provider: "relay",
+    id: "relay-model",
+    api: "openai-completions",
+    baseUrl: "https://relay.example/v1"
+  });
+});
+
+test("Pi RPC runner stops a long-lived process as soon as state arrives", async () => {
+  const payload = JSON.stringify({
+    id: "abelworkflow-provider",
+    type: "response",
+    command: "get_state",
+    success: true,
+    data: {
+      model: {
+        provider: "relay",
+        id: "relay-model",
+        api: "openai-completions",
+        baseUrl: "https://relay.example/v1"
+      }
+    }
+  });
+  const child = new EventEmitter();
+  child.stdin = new PassThrough();
+  child.stdout = new PassThrough();
+  child.stderr = new PassThrough();
+  child.exitCode = null;
+  child.signalCode = null;
+  child.killed = false;
+  child.kill = () => {
+    child.killed = true;
+  };
+  child.unref = () => {};
+  const result = await runPiRpcCommand("pi", [], {
+    input: "ignored\n",
+    timeout: 2000,
+    start: () => {
+      queueMicrotask(() => child.stdout.write(`${payload}\n`));
+      return child;
+    }
+  });
+
+  assert.equal(result.status, 0);
+  assert.equal(child.killed, true);
+  assert.equal(child.stdout.destroyed, true);
+  assert.deepEqual(parsePiRpcEffectiveModel(result.stdout), {
+    provider: "relay",
+    id: "relay-model",
+    api: "openai-completions",
+    baseUrl: "https://relay.example/v1"
+  });
+});
+
+test("Pi configuration accepts only models.json OpenAI-compatible providers", () => {
+  const models = {
+    providers: {
+      relay: { models: [{ id: "relay-model" }] }
+    }
+  };
+  assert.doesNotThrow(() => assertConfigurablePiProvider(models, {
+    providerId: "relay",
+    defaultModel: "relay-model",
+    api: "openai-completions"
+  }));
+  assert.throws(
+    () => assertConfigurablePiProvider(models, {
+      providerId: "kimi-coding",
+      defaultModel: "kimi-for-coding",
+      api: "anthropic-messages"
+    }),
+    /models\.json/u
+  );
+  assert.throws(
+    () => assertConfigurablePiProvider(models, {
+      providerId: "relay",
+      defaultModel: "relay-model",
+      api: "anthropic-messages"
+    }),
+    /anthropic-messages/u
+  );
+});
+
+test("Pi models config removes only the target Provider API key", () => {
   const next = buildPiModelsConfig({
     schemaVersion: 7,
     providers: {
       other: { apiKey: "other-key", custom: true },
-      gpt: {
+      relay: {
         apiKey: "legacy-key",
         customProviderField: "keep",
-        models: [{ id: "gpt-test", customModelField: "keep" }]
+        models: [{ id: "relay-test", customModelField: "keep" }]
       }
     }
   }, {
+    providerId: "relay",
     baseUrl: "https://relay.example/v1",
     api: "openai-responses",
-    modelIds: ["gpt-test"]
+    modelIds: ["relay-test"]
   });
 
   assert.equal(next.schemaVersion, 7);
   assert.equal(next.providers.other.apiKey, "other-key");
-  assert.equal(next.providers.gpt.customProviderField, "keep");
-  assert.equal(next.providers.gpt.models[0].customModelField, "keep");
-  assert.equal(Object.hasOwn(next.providers.gpt, "apiKey"), false);
+  assert.equal(next.providers.relay.customProviderField, "keep");
+  assert.equal(next.providers.relay.models[0].customModelField, "keep");
+  assert.equal(Object.hasOwn(next.providers.relay, "apiKey"), false);
 });
 
 test("Pi persists auth before models and settings", async () => {
@@ -81,17 +294,18 @@ test("Pi persists auth before models and settings", async () => {
     piModelsPath: "models.json",
     piSettingsPath: "settings.json"
   }, {
+    providerId: "gpt",
     apiKey: "new-key",
     models: { providers: { gpt: {} } },
     settings: { defaultModel: "gpt-test" }
   }, {
-    updateAuth: async (path, key) => calls.push(["auth", path, key]),
+    updateAuth: async (path, providerId, key) => calls.push(["auth", path, providerId, key]),
     writeModels: async (path) => calls.push(["models", path]),
     writeSettings: async (path) => calls.push(["settings", path])
   });
 
   assert.deepEqual(calls, [
-    ["auth", "auth.json", "new-key"],
+    ["auth", "auth.json", "gpt", "new-key"],
     ["models", "models.json"],
     ["settings", "settings.json"]
   ]);
@@ -112,6 +326,7 @@ test("Pi migration keeps a credential when the models write fails", async () => 
 
   try {
     await assert.rejects(persistPiConfiguration(paths, {
+      providerId: "gpt",
       apiKey: "legacy-key",
       models: { providers: { gpt: { models: [] } } },
       settings: {}
@@ -127,4 +342,3 @@ test("Pi migration keeps a credential when the models write fails", async () => 
     await rm(root, { recursive: true, force: true });
   }
 });
-

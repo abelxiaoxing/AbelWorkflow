@@ -20,9 +20,9 @@ import {
   buildCliToolMenuDescriptors,
   CancelledError,
   confirmOrCancel,
-  getAugmentContextEnginePromptOptions,
   interactiveMenuDefaultValue,
   interactiveMenuDescriptors,
+  passwordPromptOptions,
   required,
   requiredUnlessExisting,
   resolvePasswordValue,
@@ -30,7 +30,6 @@ import {
 } from "../lib/cli/prompts.mjs";
 import {
   applyClaudeInsecureTlsSetting,
-  applyClaudePermissionFeature,
   buildDefaultClaudeSettings,
   mergeClaudeSettingsWithDefaults
 } from "../lib/providers/claude.mjs";
@@ -46,10 +45,6 @@ import {
   resolveExistingPiApiConfig
 } from "../lib/providers/pi.mjs";
 import { hasPromptEnhancerApiConfig, resolvePromptEnhancerMode } from "../lib/providers/skills.mjs";
-import {
-  renderWorkflowTemplate,
-  resolveAugmentContextEngineFeature
-} from "../lib/installer/render.mjs";
 import { stripJsonComments } from "../lib/config/jsonc.mjs";
 import {
   buildCliToolInstallCommand,
@@ -110,7 +105,6 @@ function assertParseError(argv, expectedMessage) {
 
 export {
   applyClaudeInsecureTlsSetting,
-  applyClaudePermissionFeature,
   assert,
   assertInteractiveMenuSupported,
   assertNotCancelled,
@@ -129,7 +123,6 @@ export {
   defaultAgentsDir,
   existsSync,
   expectedMenuDescriptors,
-  getAugmentContextEnginePromptOptions,
   getPackageManagerInstallHelp,
   getPiApiPromptOptions,
   getRunCommandSpawnOptions,
@@ -147,12 +140,11 @@ export {
   normalizeOpenAiBaseUrl,
   parseArgs,
   parsePiModelIds,
+  passwordPromptOptions,
   piInsecureTlsHeader,
   readFileSync,
-  renderWorkflowTemplate,
   required,
   requiredUnlessExisting,
-  resolveAugmentContextEngineFeature,
   resolveExistingCodexApiConfig,
   resolveExistingPiApiConfig,
   resolvePasswordValue,

@@ -67,8 +67,7 @@ async function install(paths, force = false) {
   return installWorkflow({
     paths,
     force,
-    relinkOnly: false,
-    ensureClaudeSettings: async () => []
+    relinkOnly: false
   });
 }
 
@@ -88,7 +87,6 @@ async function createLegacyV2Install(paths, commandNames) {
   }
   await writeInstallMetadata(paths, buildInstallMetadata({
     packageVersion: "2.0.0",
-    features: { augmentContextEngine: false },
     managedFiles,
     linkedTargets: linkedTargetsFromResults(linkResults)
   }));

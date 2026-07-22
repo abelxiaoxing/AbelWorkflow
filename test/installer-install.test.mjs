@@ -12,6 +12,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import {
+  ensurePiResourcesLinked,
   ensureWorkflowPresent,
   installWorkflow,
   packageVersionFor
@@ -34,7 +35,7 @@ async function withFixture(run) {
   };
   try {
     await writeFixtureFile(packageRoot, "package.json", `${JSON.stringify({ version: "1.0.0" })}\n`);
-    await writeFixtureFile(paths.workflowTemplateRoot, "AGENTS.md", "policy={{CODEBASE_RETRIEVAL_POLICY}}\n");
+    await writeFixtureFile(paths.workflowTemplateRoot, "AGENTS.md", "policy=Use local codebase retrieval\n");
     await writeFixtureFile(paths.workflowTemplateRoot, "commands/abel-init.md", "# init\n");
     await writeFixtureFile(paths.workflowTemplateRoot, "gitignore.template", "tmp/\n");
     await writeFixtureFile(packageRoot, "README.md", "# AbelWorkflow\n");
@@ -51,8 +52,6 @@ async function writeFixtureFile(root, relativePath, content) {
   await mkdir(join(target, ".."), { recursive: true });
   await writeFile(target, content, "utf8");
 }
-
-const noClaudeSettings = async () => [];
 
 async function withTestPlatform(platform, run) {
   const previousPlatform = process.env.ABELWORKFLOW_TEST_PLATFORM;
@@ -85,9 +84,7 @@ test("installWorkflow returns a complete report, writes metadata last, and repea
     const first = await installWorkflow({
       paths,
       relinkOnly: false,
-      force: false,
-      featureOverrides: { augmentContextEngine: false },
-      ensureClaudeSettings: noClaudeSettings
+      force: false
     });
     assert.ok(first.created.length > 0);
     assert.ok(first.linked.length > 0);
@@ -104,9 +101,7 @@ test("installWorkflow returns a complete report, writes metadata last, and repea
     const second = await installWorkflow({
       paths,
       relinkOnly: false,
-      force: false,
-      featureOverrides: {},
-      ensureClaudeSettings: noClaudeSettings
+      force: false
     });
 
     assert.deepEqual(second.created, []);
@@ -133,6 +128,19 @@ test("ensureWorkflowPresent completes a deployment that only contains AGENTS.md"
   });
 });
 
+test("ensurePiResourcesLinked returns the incremental sync report", async () => {
+  await withFixture(async ({ paths }) => {
+    const first = await ensurePiResourcesLinked(paths);
+    const second = await ensurePiResourcesLinked(paths);
+
+    assert.ok(first.created.length > 0);
+    assert.ok(first.linked.length > 0);
+    assert.deepEqual(second.created, []);
+    assert.deepEqual(second.updated, []);
+    assert.ok(second.unchanged.length > 0);
+  });
+});
+
 test("ensureWorkflowPresent rejects the removed agentsDir string overload", async () => {
   await withFixture(async ({ paths }) => {
     await assert.rejects(
@@ -143,26 +151,6 @@ test("ensureWorkflowPresent rejects the removed agentsDir string overload", asyn
   });
 });
 
-test("installWorkflow ignores the removed flat augmentContextEngine option", async () => {
-  await withFixture(async ({ paths }) => {
-    await installWorkflow({
-      paths,
-      relinkOnly: false,
-      force: false,
-      augmentContextEngine: true,
-      ensureClaudeSettings: noClaudeSettings
-    });
-
-    assert.match(
-      await readFile(join(paths.agentsDir, "AGENTS.md"), "utf8"),
-      /Use local codebase retrieval/u
-    );
-    assert.deepEqual((await readInstallMetadata(paths)).features, {
-      augmentContextEngine: false
-    });
-  });
-});
-
 test("failed link phase never writes completion metadata", async () => {
   await withFixture(async ({ paths }) => {
     await writeFixtureFile(paths.homeDir, ".claude/commands", "blocking file\n");
@@ -170,9 +158,7 @@ test("failed link phase never writes completion metadata", async () => {
     await assert.rejects(installWorkflow({
       paths,
       relinkOnly: false,
-      force: true,
-      featureOverrides: { augmentContextEngine: false },
-      ensureClaudeSettings: noClaudeSettings
+      force: true
     }), /conflict/u);
 
     await assert.rejects(
@@ -188,9 +174,7 @@ test("relink-only requires an existing deployment and does not create it", async
     await assert.rejects(installWorkflow({
       paths,
       relinkOnly: true,
-      force: false,
-      featureOverrides: {},
-      ensureClaudeSettings: noClaudeSettings
+      force: false
     }), /install first/u);
     await assert.rejects(stat(paths.agentsDir), (error) => error.code === "ENOENT");
   });
@@ -212,25 +196,21 @@ test("relink-only does not infer v1 ownership or later delete unknown files", as
     await installWorkflow({
       paths,
       relinkOnly: true,
-      force: false,
-      featureOverrides: {},
-      ensureClaudeSettings: noClaudeSettings
+      force: false
     });
 
     const migrated = await readInstallMetadata(paths);
     assert.equal(migrated.schemaVersion, 2);
     assert.deepEqual(migrated.managedFiles, {});
     assert.equal(Object.hasOwn(migrated, "managedChildren"), false);
-    assert.deepEqual(migrated.features, { augmentContextEngine: false });
+    assert.equal(Object.hasOwn(migrated, "features"), false);
     assert.equal(await readFile(join(paths.agentsDir, "AGENTS.md"), "utf8"), "legacy agents\n");
     assert.equal(await readFile(legacyCommand, "utf8"), "legacy command\n");
 
     const installed = await installWorkflow({
       paths,
       relinkOnly: false,
-      force: false,
-      featureOverrides: {},
-      ensureClaudeSettings: noClaudeSettings
+      force: false
     });
 
     assert.ok(installed.conflicts.includes("AGENTS.md"));
@@ -259,9 +239,7 @@ test("relink-only upgrades identical Windows v1 copies with target hashes", {
     const result = await installWorkflow({
       paths,
       relinkOnly: true,
-      force: false,
-      featureOverrides: {},
-      ensureClaudeSettings: noClaudeSettings
+      force: false
     });
     const metadata = await readInstallMetadata(paths);
 

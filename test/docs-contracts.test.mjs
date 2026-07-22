@@ -2,8 +2,6 @@ import assert from "node:assert/strict";
 import { readdirSync, readFileSync } from "node:fs";
 import test from "node:test";
 
-import { renderWorkflowTemplate } from "../lib/installer/render.mjs";
-
 const repoRoot = new URL("../", import.meta.url);
 const workflowCommandsRoot = new URL("../lib/templates/workflow/commands/", import.meta.url);
 const migrationGuideUrl = "https://github.com/abelxiaoxing/AbelWorkflow/blob/master/docs/migration-1.0.md";
@@ -78,8 +76,7 @@ test("README documents the 1.0 runtime and source-install contracts", () => {
   assert.match(readme, /npm ci --prefix skills\/dev-browser/u);
   assert.match(readme, /npm run build/u);
   assert.match(readme, /install --agents-dir ~\/\.agents/u);
-  assert.match(readme, /standard/u);
-  assert.match(readme, /trusted/u);
+  assert.match(readme, /bypassPermissions/u);
   assert.match(readme, /auth\.json/u);
   assert.match(readme, /node dist\/scripts\/start\.js/u);
   assert.deepEqual(
@@ -100,8 +97,7 @@ test("1.0 migration guide covers every state and runtime migration boundary", ()
     /Pi\s*0\.80\.0/iu,
     /auth\.json/u,
     /models\.json/u,
-    /standard/u,
-    /trusted/u,
+    /bypassPermissions/u,
     /context7-api\.cjs/u,
     /node dist\/scripts\/start\.js/u,
     /\.abelworkflow\.bak\./u,
@@ -119,7 +115,7 @@ test("1.0 docs define conservative v1 ownership and Prompt Enhancer migration", 
   ];
 
   for (const document of documents) {
-    assert.match(document, /只迁移.*`features`.*`managedClaudePermissions`.*`linkedTargets`/su);
+    assert.match(document, /只迁移.*`linkedTargets`/su);
     assert.match(document, /`managedChildren` 不迁移为 asset 所有权/u);
     assert.match(document, /与当前 source 内容完全相同.*接管/su);
     assert.match(document, /其余已有路径.*冲突/u);
@@ -161,16 +157,9 @@ test("modern UI document reports implemented and deferred behavior accurately", 
   assert.doesNotMatch(proposal, /Windows 明文/u);
 });
 
-test("workflow commands render fully and Codex agents use the baseline model", () => {
+test("workflow commands are placeholder-free and Codex agents use the baseline model", () => {
   for (const name of readdirSync(workflowCommandsRoot)) {
-    const source = read(name, workflowCommandsRoot);
-    for (const augmentContextEngine of [false, true]) {
-      assert.doesNotMatch(
-        renderWorkflowTemplate(source, { augmentContextEngine }),
-        /\{\{[^{}]+\}\}/u,
-        `${name}: ${augmentContextEngine}`
-      );
-    }
+    assert.doesNotMatch(read(name, workflowCommandsRoot), /\{\{[^{}]+\}\}/u, name);
   }
 
   const baseModel = read("lib/templates/codex/config-base.toml").match(/^model\s*=\s*"([^"]+)"/mu)?.[1];

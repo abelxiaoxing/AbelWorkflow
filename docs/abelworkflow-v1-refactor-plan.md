@@ -269,11 +269,9 @@ metadata v2 至少记录：
 {
   "schemaVersion": 2,
   "packageVersion": "1.0.0",
-  "features": {},
   "managedFiles": {
     "relative/path": "sha256"
   },
-  "managedClaudePermissions": [],
   "linkedTargets": {}
 }
 ~~~
@@ -296,7 +294,7 @@ metadata v2 至少记录：
 
 v1 metadata 迁移：
 
-- 只迁移 `features`、`managedClaudePermissions` 和 `linkedTargets`。
+- 只迁移 `linkedTargets`。
 - `managedChildren` 不迁移为 asset 所有权，也不触发现场认领。
 - v1 `managedChildren` 指向但当前 manifest 已移除的 stale 路径始终保留，即使使用 `--force` 也不删除。
 - 当前 manifest 的其他已有路径遵循上面的 source-equal 接管、冲突与精确 force 规则。
@@ -388,21 +386,12 @@ CLI → auth.json → environment → models.json
 
 ### Claude
 
-只提供两个权限配置档：
-
-1. standard：默认，不新增 Bash、Write、Edit 等宽权限。
-2. trusted：用户明确选择后才增加当前宽权限集合。
-
-要求：
-
-- 全新非交互安装使用 standard。
+- 默认写入 `bypassPermissions` 全权限模式（YOLO），不提供权限配置档。
+- 第三方 API 仅使用 API Key 认证，不再支持 Auth Token。
+- 默认配置不添加任何 MCP 权限。
 - API 配置只更新 AbelWorkflow 拥有的 env 字段。
 - 不再默认注入 API_TIMEOUT_MS=1000000。
 - 已有 permissions、deny、hooks、timeout 原样保留。
-- metadata 记录 AbelWorkflow 实际增加的权限。
-- 配置档切换只移除 metadata 中记录的权限。
-- --force 不得改变权限配置档。
-- augment 功能只增删自身管理的 MCP 权限。
 
 ### Grok、Context7、Prompt Enhancer
 
@@ -779,7 +768,7 @@ extension 场景：
 
 - Pi auth-only。
 - Codex 保留未知认证字段。
-- Claude standard/trusted。
+- Claude bypassPermissions。
 - 私密 .env。
 - Grok defaults。
 - Context7 .cjs。
@@ -791,8 +780,7 @@ extension 场景：
 - Pi 迁移失败不丢 key。
 - Codex 未知字段保留。
 - Claude 自定义权限保留。
-- standard 不注入宽权限。
-- trusted 显式注入。
+- 默认写入 bypassPermissions。
 - Context7 两种包作用域执行成功。
 - Sequential Think 只写指定目录。
 
@@ -914,12 +902,10 @@ docs(release): align contracts for 1.0
 - [x] .skill-lock.json 不被发布或修改。
 - [x] source/deploy 相同或嵌套时安装前失败。
 - [ ] 源码安装前后 git status 干净。
-- [x] augment feature 可双向切换。
 - [x] --force 只覆盖明确托管路径。
 - [x] Pi models.json 不包含 gpt API Key。
 - [x] Codex 未知认证字段保留。
-- [x] Claude standard 不预授权 Bash/Write/Edit。
-- [x] Claude trusted 必须显式选择。
+- [x] Claude 默认写入 bypassPermissions 全权限模式。
 - [x] Context7 在两种包作用域中可运行。
 - [x] Sequential Think 使用指定配置目录。
 - [x] confidence.ts 已删除。

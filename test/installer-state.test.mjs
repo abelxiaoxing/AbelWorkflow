@@ -7,7 +7,6 @@ import test from "node:test";
 import {
   buildInstallMetadata,
   finalizeProviderInstallMetadata,
-  getPreviousClaudePermissionProfile,
   getPreviousManagedCodexAgentFiles,
   getPreviousManagedCodexAuthKeys,
   readInstallMetadata,
@@ -62,19 +61,16 @@ test("published schema v1 metadata cannot claim schema v2 Codex agent ownership"
   for (const previousMetadata of [
     {
       managedCodexAgentFiles: agentHashes,
-      managedCodexAuthKeys: ["LEGACY_KEY"],
-      claudePermissionProfile: "trusted"
+      managedCodexAuthKeys: ["LEGACY_KEY"]
     },
     {
       schemaVersion: 1,
       managedCodexAgentFiles: agentHashes,
-      managedCodexAuthKeys: ["LEGACY_KEY"],
-      claudePermissionProfile: "trusted"
+      managedCodexAuthKeys: ["LEGACY_KEY"]
     }
   ]) {
     assert.deepEqual(getPreviousManagedCodexAgentFiles(previousMetadata), {});
     assert.deepEqual(getPreviousManagedCodexAuthKeys(previousMetadata), []);
-    assert.equal(getPreviousClaudePermissionProfile(previousMetadata), "standard");
     assert.deepEqual(buildInstallMetadata({
       previousMetadata,
       packageVersion: "1.0.0"
@@ -100,7 +96,6 @@ test("provider metadata finalization migrates only published v1 fields", () => {
       managedFiles: { "AGENTS.md": "c".repeat(64) },
       managedCodexAuthKeys: ["LEGACY_KEY"],
       managedCodexAgentFiles: agentHashes,
-      claudePermissionProfile: "trusted",
       unknown: true
     },
     packageVersion: "1.0.0",
@@ -113,12 +108,9 @@ test("provider metadata finalization migrates only published v1 fields", () => {
   assert.deepEqual(finalized, {
     schemaVersion: 2,
     packageVersion: "1.0.0",
-    features: { augmentContextEngine: true },
     managedFiles: {},
-    managedClaudePermissions: ["Write"],
     managedCodexAuthKeys: [],
     managedCodexAgentFiles: {},
-    claudePermissionProfile: "standard",
     linkedTargets: { "/target": linkedTarget }
   });
 });
@@ -128,12 +120,9 @@ test("provider metadata finalization preserves valid schema v2 fields", () => {
     schemaVersion: 2,
     packageVersion: "1.0.0",
     installedAt: "stable-time",
-    features: { augmentContextEngine: false },
     managedFiles: { "AGENTS.md": "c".repeat(64) },
-    managedClaudePermissions: ["Bash"],
     managedCodexAuthKeys: ["CODEX_KEY"],
     managedCodexAgentFiles: agentHashes,
-    claudePermissionProfile: "trusted",
     linkedTargets: {
       "/target": { sourcePath: "/source", kind: "file", mode: "symlink" }
     }
@@ -147,26 +136,4 @@ test("provider metadata finalization preserves valid schema v2 fields", () => {
       managedCodexAgentFiles: agentHashes
     }
   }), previousMetadata);
-});
-
-test("direct Claude finalization records an explicit v2 profile safely", () => {
-  const finalized = finalizeProviderInstallMetadata({
-    previousMetadata: {
-      schemaVersion: 1,
-      features: { augmentContextEngine: false },
-      managedClaudePermissions: ["legacy-safe"],
-      claudePermissionProfile: "trusted",
-      managedCodexAuthKeys: ["LEGACY_KEY"]
-    },
-    packageVersion: "1.0.0",
-    overrides: {
-      claudePermissionProfile: "trusted",
-      managedClaudePermissions: ["Bash", "Write"]
-    }
-  });
-
-  assert.equal(finalized.schemaVersion, 2);
-  assert.equal(finalized.claudePermissionProfile, "trusted");
-  assert.deepEqual(finalized.managedClaudePermissions, ["Bash", "Write"]);
-  assert.deepEqual(finalized.managedCodexAuthKeys, []);
 });

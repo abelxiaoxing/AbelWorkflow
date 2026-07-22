@@ -147,6 +147,41 @@ test("resolvePasswordValue trims whitespace and falls back to existing value", (
   assert.equal(resolvePasswordValue(" - ", "old-key"), undefined);
 });
 
+test("password prompts preserve configured secrets without exposing them as options", () => {
+  const validate = requiredUnlessExisting("sk-secret");
+  const configured = passwordPromptOptions("API Key", "sk-secret", validate);
+
+  assert.deepEqual(configured, {
+    message: "API Key（已配置，直接回车保留；输入 - 清除）",
+    mask: "*",
+    validate
+  });
+  assert.doesNotMatch(JSON.stringify(configured), /sk-secret/u);
+  assert.deepEqual(passwordPromptOptions("API Key", ""), {
+    message: "API Key（输入 - 清除）",
+    mask: "*"
+  });
+});
+
+test("provider text prompts use editable initial values and password prompts use the safe wrapper", () => {
+  for (const relativePath of [
+    "lib/providers/claude.mjs",
+    "lib/providers/codex.mjs",
+    "lib/providers/pi.mjs",
+    "lib/providers/skills.mjs"
+  ]) {
+    const source = readFileSync(new URL(`../${relativePath}`, import.meta.url), "utf8");
+    const textPrompts = [...source.matchAll(/p\.text\(\{([\s\S]*?)\n\s+\}\);/gu)];
+
+    assert.ok(textPrompts.length > 0, `${relativePath} must contain text prompts`);
+    for (const [, options] of textPrompts) {
+      assert.match(options, /\binitialValue:/u, `${relativePath} text prompt must prefill its value`);
+      assert.doesNotMatch(options, /\bdefaultValue:/u, `${relativePath} text prompt must not use a fallback-only value`);
+    }
+    assert.doesNotMatch(source, /p\.password\(\{/u, `${relativePath} must not pass secrets as prompt options`);
+  }
+});
+
 test("confirmOrCancel is exported as async function with correct arity", () => {
   assert.equal(typeof confirmOrCancel, "function");
   assert.equal(confirmOrCancel.length, 1);
@@ -158,11 +193,3 @@ test("selectOrCancel is exported as async function with correct arity", () => {
   assert.equal(selectOrCancel.length, 1);
   assert.equal(selectOrCancel.constructor.name, "AsyncFunction");
 });
-
-test("full init augment-context-engine prompt defaults to disabled", () => {
-  assert.deepEqual(getAugmentContextEnginePromptOptions(), {
-    message: "是否启用 augment-context-engine MCP 代码检索支持？不确定建议选否，可减少 MCP 安装和配置麻烦。",
-    initialValue: false
-  });
-});
-

@@ -73,9 +73,12 @@ test("getPiApiPromptOptions recommends Chat Completions before Responses", () =>
     { value: "openai-completions", label: "OpenAI Chat Completions（推荐）" },
     { value: "openai-responses", label: "OpenAI Responses API" }
   ]);
-  assert.equal(resolveExistingPiApiConfig().api, "openai-completions");
+  assert.equal(resolveExistingPiApiConfig().api, "");
   assert.equal(resolveExistingPiApiConfig({
-    providers: { gpt: { api: "openai-responses" } }
+    providers: { relay: { api: "openai-responses", models: [{ id: "relay-model" }] } }
+  }, {
+    defaultProvider: "relay",
+    defaultModel: "relay-model"
   }).api, "openai-responses");
 });
 
@@ -117,4 +120,3 @@ test("stripJsonComments rejects unterminated block comments", () => {
     (error) => error instanceof SyntaxError && /unterminated block comment/iu.test(error.message)
   );
 });
-

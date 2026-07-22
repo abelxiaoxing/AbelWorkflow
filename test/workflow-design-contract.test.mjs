@@ -2,8 +2,6 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 
-import { renderWorkflowTemplate } from "../lib/installer/render.mjs";
-
 const repoRoot = new URL("../", import.meta.url);
 
 function read(path) {
@@ -83,12 +81,15 @@ test("abel-design defines applicable PBT and executable task verification", () =
   assert.doesNotMatch(phaseFour, /^\s+- \[[ x]\]/mu);
 });
 
-test("abel-design renders cleanly for both retrieval feature states", () => {
-  const source = read("lib/templates/workflow/commands/abel-design.md");
-
-  for (const augmentContextEngine of [false, true]) {
-    const rendered = renderWorkflowTemplate(source, { augmentContextEngine });
-    assert.doesNotMatch(rendered, /\{\{[^{}]+\}\}/u);
+test("workflow templates contain no render placeholders or MCP references", () => {
+  for (const path of [
+    "lib/templates/workflow/AGENTS.md",
+    "lib/templates/workflow/commands/abel-design.md",
+    "lib/templates/workflow/commands/abel-init.md"
+  ]) {
+    const content = read(path);
+    assert.doesNotMatch(content, /\{\{[^{}]+\}\}/u, path);
+    assert.doesNotMatch(content, /augment-context-engine/iu, path);
   }
 });
 
