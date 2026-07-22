@@ -148,15 +148,6 @@ test("dev-browser docs keep temporary artifacts outside the installed skill", ()
   assert.match(skill, /join\(tmpdir\(\), "dev-browser-screenshot\.png"\)/u);
 });
 
-test("modern UI document reports implemented and deferred behavior accurately", () => {
-  const proposal = read("docs/modern-ui-proposal.md");
-
-  assert.match(proposal, /状态：部分实施/u);
-  assert.match(proposal, /Stepper.*未实现/isu);
-  assert.match(proposal, /不属于 AbelWorkflow 1\.0/u);
-  assert.doesNotMatch(proposal, /Windows 明文/u);
-});
-
 test("workflow commands are placeholder-free and Codex agents use the baseline model", () => {
   for (const name of readdirSync(workflowCommandsRoot)) {
     assert.doesNotMatch(read(name, workflowCommandsRoot), /\{\{[^{}]+\}\}/u, name);

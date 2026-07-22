@@ -56,11 +56,10 @@ test("root quality scripts cover every repository test boundary", () => {
   }
 });
 
-test("the local release candidate version is synchronized with the root lock", () => {
+test("the package version is synchronized with the root lock", () => {
   const packageJson = JSON.parse(read("package.json"));
   const packageLock = JSON.parse(read("package-lock.json"));
 
-  assert.equal(packageJson.version, "1.0.0-rc.1");
   assert.equal(packageLock.version, packageJson.version);
   assert.equal(packageLock.packages[""].version, packageJson.version);
 });
