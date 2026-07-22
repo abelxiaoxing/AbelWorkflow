@@ -197,7 +197,7 @@ test("assertInteractiveMenuSupported enforces TTY only for menu command", () => 
 });
 
 test("parseArgs supports --non-interactive flag", () => {
-  assert.deepEqual(parseArgs(["--non-interactive"], { defaultAgentsDir, resolvePath }), {
+  assert.deepEqual(parseArgs(["--non-interactive"], { defaultAgentsDir, resolvePath, env: {} }), {
     agentsDir: defaultAgentsDir,
     force: false,
     relinkOnly: false,
@@ -206,23 +206,13 @@ test("parseArgs supports --non-interactive flag", () => {
   });
 });
 
-test("parseArgs auto-enables nonInteractive when CI environment is set", { concurrency: false }, () => {
-  const previousCI = process.env.CI;
-  process.env.CI = "true";
-  try {
-    assert.deepEqual(parseArgs([], { defaultAgentsDir, resolvePath }), {
-      agentsDir: defaultAgentsDir,
-      force: false,
-      relinkOnly: false,
-      nonInteractive: true,
-      command: "menu"
-    });
-  } finally {
-    if (previousCI === undefined) {
-      delete process.env.CI;
-    } else {
-      process.env.CI = previousCI;
-    }
-  }
+test("parseArgs auto-enables nonInteractive when CI environment is set", () => {
+  assert.deepEqual(parseArgs([], { defaultAgentsDir, resolvePath, env: { CI: "true" } }), {
+    agentsDir: defaultAgentsDir,
+    force: false,
+    relinkOnly: false,
+    nonInteractive: true,
+    command: "menu"
+  });
 });
 

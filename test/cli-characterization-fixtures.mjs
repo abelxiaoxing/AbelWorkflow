@@ -91,12 +91,12 @@ const expectedMenuDescriptors = [
 ];
 
 function assertParse(argv, expected) {
-  assert.deepEqual(parseArgs(argv, { defaultAgentsDir, resolvePath }), expected);
+  assert.deepEqual(parseArgs(argv, { defaultAgentsDir, resolvePath, env: {} }), expected);
 }
 
 function assertParseError(argv, expectedMessage) {
   assert.throws(
-    () => parseArgs(argv, { defaultAgentsDir, resolvePath }),
+    () => parseArgs(argv, { defaultAgentsDir, resolvePath, env: {} }),
     (error) => error instanceof Error && error.message === expectedMessage
   );
 }
