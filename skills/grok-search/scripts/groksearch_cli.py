@@ -216,7 +216,17 @@ def _emit_tavily_warning(message: str) -> None:
 RETRYABLE_STATUS_CODES = {408, 429, 500, 502, 503, 504}
 
 
+class StreamEmbeddedError(Exception):
+    """SSE 流内嵌错误事件（HTTP 200 + data: {"error": ...}）。"""
+
+
+class EmptyStreamError(Exception):
+    """流式响应解析完成但内容为空。"""
+
+
 def _is_retryable_exception(exc) -> bool:
+    if isinstance(exc, (StreamEmbeddedError, EmptyStreamError)):
+        return True
     if isinstance(exc, (httpx.TimeoutException, httpx.NetworkError, httpx.ConnectError, httpx.RemoteProtocolError)):
         return True
     if isinstance(exc, httpx.HTTPStatusError):
@@ -501,6 +511,7 @@ def _normalize_tavily_base_url(raw: str) -> str:
 
 _http_client: Optional[httpx.AsyncClient] = None
 _DEFAULT_TIMEOUT = httpx.Timeout(connect=6.0, read=60.0, write=10.0, pool=None)
+_NON_STREAM_TIMEOUT = httpx.Timeout(connect=6.0, read=10.0, write=10.0, pool=None)
 
 
 async def get_http_client() -> httpx.AsyncClient:
@@ -586,16 +597,23 @@ class GrokSearchProvider:
         return await self._execute(payload)
 
     async def _execute(self, payload: dict) -> str:
-        """执行请求：先尝试非流式，失败时回退到流式。"""
+        """执行请求：流式优先，失败时回退到非流式（10s 超时 fail-fast）。"""
         try:
-            return await self._execute_non_stream(payload)
-        except (httpx.HTTPStatusError, json.JSONDecodeError) as e:
-            if config.debug_enabled:
-                print(f"[DEBUG] 非流式失败: {e}，回退到流式", file=sys.stderr)
             return await self._execute_stream(payload)
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code not in RETRYABLE_STATUS_CODES:
+                raise
+            if config.debug_enabled:
+                print(f"[DEBUG] 流式失败: {e}，回退到非流式", file=sys.stderr)
+            return await self._execute_non_stream(payload)
+        except (httpx.TimeoutException, httpx.NetworkError, httpx.RemoteProtocolError,
+                StreamEmbeddedError, EmptyStreamError, json.JSONDecodeError) as e:
+            if config.debug_enabled:
+                print(f"[DEBUG] 流式失败: {e}，回退到非流式", file=sys.stderr)
+            return await self._execute_non_stream(payload)
 
     async def _execute_non_stream(self, payload: dict) -> str:
-        """非流式请求（首选，对短响应更快）。"""
+        """非流式请求（流式失败后的回退方案，10s read 超时 fail-fast）。"""
         payload_copy = {**payload, "stream": False}
         client = await get_http_client()
 
@@ -610,6 +628,7 @@ class GrokSearchProvider:
                     f"{self.api_url}/chat/completions",
                     headers=self._headers,
                     json=payload_copy,
+                    timeout=_NON_STREAM_TIMEOUT,
                 )
                 response.raise_for_status()
                 data = response.json()
@@ -619,7 +638,7 @@ class GrokSearchProvider:
                 return ""
 
     async def _execute_stream(self, payload: dict) -> str:
-        """流式请求（大响应的回退方案）。"""
+        """流式请求（首选，chunk 保活避免网关超时）。"""
         payload_copy = {**payload, "stream": True}
         client = await get_http_client()
 
@@ -655,24 +674,30 @@ class GrokSearchProvider:
                 try:
                     json_str = line[5:].lstrip()
                     data = json.loads(json_str)
-                    choices = data.get("choices", [])
-                    if choices:
-                        delta = choices[0].get("delta", {})
-                        if "content" in delta:
-                            content += delta["content"]
                 except (json.JSONDecodeError, IndexError):
                     continue
+                if isinstance(data, dict) and "error" in data:
+                    raise StreamEmbeddedError(json.dumps(data["error"], ensure_ascii=False)[:300])
+                choices = data.get("choices", [])
+                if choices:
+                    delta = choices[0].get("delta", {})
+                    if "content" in delta:
+                        content += delta["content"]
 
         if not content and full_body_buffer:
             try:
                 full_text = "".join(full_body_buffer)
                 data = json.loads(full_text)
+                if isinstance(data, dict) and "error" in data:
+                    raise StreamEmbeddedError(json.dumps(data["error"], ensure_ascii=False)[:300])
                 if "choices" in data and data["choices"]:
                     message = data["choices"][0].get("message", {})
                     content = message.get("content", "")
             except json.JSONDecodeError:
                 pass
 
+        if not content.strip():
+            raise EmptyStreamError("流式响应内容为空")
         return content
 
 
@@ -935,8 +960,9 @@ async def cmd_web_search(args):
     except ValueError as e:
         print(json.dumps({"error": str(e)}, ensure_ascii=False), file=sys.stderr)
         sys.exit(1)
-    except httpx.HTTPStatusError as e:
-        print(json.dumps({"error": f"API错误: {e.response.status_code}"}, ensure_ascii=False), file=sys.stderr)
+    except httpx.HTTPError as e:
+        detail = str(e.response.status_code) if isinstance(e, httpx.HTTPStatusError) else (str(e) or type(e).__name__)
+        print(json.dumps({"error": f"API错误: {detail}"}, ensure_ascii=False), file=sys.stderr)
         sys.exit(1)
 
 
@@ -974,8 +1000,9 @@ async def cmd_web_fetch(args):
         except ValueError as e:
             print(f"错误: {e}", file=sys.stderr)
             sys.exit(1)
-        except httpx.HTTPStatusError as e:
-            print(f"API错误: {e.response.status_code}", file=sys.stderr)
+        except httpx.HTTPError as e:
+            detail = str(e.response.status_code) if isinstance(e, httpx.HTTPStatusError) else (str(e) or type(e).__name__)
+            print(f"API错误: {detail}", file=sys.stderr)
             sys.exit(1)
 
     if not result and tavily_error and not use_grok_fallback:
