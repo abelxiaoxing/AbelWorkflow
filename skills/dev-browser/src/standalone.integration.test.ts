@@ -56,7 +56,9 @@ browserTest("runs the named-page contract against real headless Chromium", async
     ).resolves.toBe("two");
 
     await expect(client.list()).resolves.toEqual(["one", "two"]);
+    const firstClosed = first.waitForEvent("close");
     await client.close("one");
+    await firstClosed;
     expect(first.isClosed()).toBe(true);
     const missing = await fetch(`${baseUrl}/pages/one`, { method: "DELETE" });
     expect(missing.status).toBe(404);
