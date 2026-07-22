@@ -88,6 +88,12 @@ test("Pi extension does not disable TLS verification for the process", () => {
   assert.doesNotMatch(content, /NODE_TLS_REJECT_UNAUTHORIZED/u);
 });
 
+test("Pi Responses compatibility follows the model API instead of its Provider ID", () => {
+  const content = readFileSync(new URL("../extensions/pi-gpt-responses-compat/index.ts", import.meta.url), "utf8");
+  assert.match(content, /ctx\.model\?\.api !== "openai-responses"/u);
+  assert.doesNotMatch(content, /ctx\.model\?\.provider !== "gpt"/u);
+});
+
 test("Pi current-provider config toggles only the managed insecure TLS request marker", () => {
   const existing = {
     providers: {

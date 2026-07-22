@@ -21,7 +21,7 @@ export default function (pi: ExtensionAPI) {
   pi.on("before_provider_request", (event, ctx) => {
     const payload = event.payload as any;
     if (!payload || typeof payload !== "object" || Array.isArray(payload)) return;
-    if (ctx.model?.provider !== "gpt") return;
+    if (ctx.model?.api !== "openai-responses") return;
     if (!("input" in payload)) return;
 
     const input = Array.isArray(payload.input) ? payload.input : [];

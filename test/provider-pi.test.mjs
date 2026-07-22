@@ -287,6 +287,33 @@ test("Pi models config removes only the target Provider API key", () => {
   assert.equal(Object.hasOwn(next.providers.relay, "apiKey"), false);
 });
 
+test("Pi models config removes stale model-level endpoint overrides", () => {
+  const next = buildPiModelsConfig({
+    providers: {
+      relay: {
+        baseUrl: "https://old.example/v1",
+        api: "openai-completions",
+        models: [{
+          id: "relay-test",
+          baseUrl: "https://model.example/v1",
+          api: "openai-completions",
+          customModelField: "keep"
+        }]
+      }
+    }
+  }, {
+    providerId: "relay",
+    baseUrl: "https://new.example/v1",
+    api: "openai-responses",
+    modelIds: ["relay-test"]
+  });
+
+  const [model] = next.providers.relay.models;
+  assert.equal(Object.hasOwn(model, "baseUrl"), false);
+  assert.equal(Object.hasOwn(model, "api"), false);
+  assert.equal(model.customModelField, "keep");
+});
+
 test("Pi persists auth before models and settings", async () => {
   const calls = [];
   await persistPiConfiguration({
