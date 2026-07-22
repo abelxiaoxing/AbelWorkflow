@@ -33,6 +33,11 @@ test("the npm-only repository has exactly its two supported lockfiles", () => {
   assert.equal(existsSync(new URL("../bun.lock", import.meta.url)), false);
 });
 
+test("Git checkout preserves LF for cross-platform managed assets", () => {
+  assert.equal(read(".gitattributes"), "* text=auto eol=lf\n");
+  assertTrackable(".gitattributes");
+});
+
 test("root quality scripts cover every repository test boundary", () => {
   const packageJson = JSON.parse(read("package.json"));
 
