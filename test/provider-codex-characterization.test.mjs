@@ -58,7 +58,7 @@ test("mergeCodexAuthData preserves unowned auth data and replaces managed auth k
   }
 });
 
-test("resolveExistingCodexApiConfig reads only the resolved provider env key", () => {
+test("resolveExistingCodexApiConfig always reads OPENAI_API_KEY", () => {
   const content = `model_provider = "custom"
 
 [model_providers.custom]
@@ -73,8 +73,8 @@ temp_env_key = "CUSTOM_API_KEY"
     providerId: "custom",
     providerName: "Custom",
     baseUrl: "https://custom.example/v1",
-    envKey: "CUSTOM_API_KEY",
-    apiKey: ""
+    envKey: "OPENAI_API_KEY",
+    apiKey: "personal-secret"
   });
 });
 

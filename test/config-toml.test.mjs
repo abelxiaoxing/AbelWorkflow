@@ -336,12 +336,12 @@ test("Codex treats dynamic provider ids as one TOML key segment", () => {
 name = "Old"
 base_url = "https://old.example/v1"
 `;
-  const existing = resolveExistingCodexApiConfig(current, { FOO_BAR_API_KEY: "lossy-secret" });
+  const existing = resolveExistingCodexApiConfig(current, { OPENAI_API_KEY: "secret" });
   assert.equal(existing.providerId, "foo.bar");
   assert.equal(existing.providerName, "Old");
   assert.equal(existing.baseUrl, "https://old.example/v1");
-  assert.match(existing.envKey, /^ABELWORKFLOW_PROVIDER_[A-F0-9]{64}_API_KEY$/u);
-  assert.equal(existing.apiKey, "");
+  assert.equal(existing.envKey, "OPENAI_API_KEY");
+  assert.equal(existing.apiKey, "secret");
 
   const updated = buildCodexConfigContent(current, {
     templateContent: "",
@@ -369,68 +369,28 @@ base_url = "https://old.example/v1"
       providerId,
       providerName: "Special",
       baseUrl: "https://special.example/v1",
-      envKey: "SPECIAL_API_KEY",
+      envKey: "OPENAI_API_KEY",
       apiKey: ""
     });
   }
 
 });
 
-test("Codex default env keys are shell-valid and collision-resistant", () => {
-  const providerIds = [
-    "名字",
-    "其他",
-    "!!!",
-    "???",
-    "foo.bar",
-    "foo-bar",
-    "foo_bar",
-    "Foo",
-    "foo",
-    "123",
-    "456"
-  ];
-  const envKeys = providerIds.map((providerId) => {
+test("Codex always uses OPENAI_API_KEY for every provider", () => {
+  for (const providerId of ["openai", "abelworkflow", "名字", "foo.bar", "openai!"]) {
     const content = `model_provider = ${JSON.stringify(providerId)}
 
 [model_providers.${JSON.stringify(providerId)}]
-name = "Special"
-`;
-    return resolveExistingCodexApiConfig(content).envKey;
-  });
-
-  assert.equal(new Set(envKeys).size, providerIds.length);
-  for (const envKey of envKeys) {
-    assert.match(envKey, /^ABELWORKFLOW_PROVIDER_[A-F0-9]{64}_API_KEY$/u);
-  }
-
-  for (const [providerId, envKey] of [
-    ["openai", "OPENAI_API_KEY"],
-    ["abelworkflow", "ABELWORKFLOW_API_KEY"]
-  ]) {
-    const content = `model_provider = "${providerId}"
-
-[model_providers.${providerId}]
-name = "Built-in"
-`;
-    assert.equal(resolveExistingCodexApiConfig(content).envKey, envKey);
-  }
-
-  const customOpenAi = `model_provider = "openai!"
-
-[model_providers."openai!"]
-name = "Custom OpenAI endpoint"
-`;
-  const custom = resolveExistingCodexApiConfig(customOpenAi, {
-    OPENAI_API_KEY: "personal-secret"
-  });
-  assert.match(custom.envKey, /^ABELWORKFLOW_PROVIDER_[A-F0-9]{64}_API_KEY$/u);
-  assert.equal(custom.apiKey, "");
-
-  const explicit = `${customOpenAi.trimEnd()}
+name = "Provider"
 temp_env_key = "EXPLICIT_KEY"
 `;
-  assert.equal(resolveExistingCodexApiConfig(explicit).envKey, "EXPLICIT_KEY");
+    const existing = resolveExistingCodexApiConfig(content, {
+      EXPLICIT_KEY: "legacy-secret",
+      OPENAI_API_KEY: "openai-secret"
+    });
+    assert.equal(existing.envKey, "OPENAI_API_KEY");
+    assert.equal(existing.apiKey, "openai-secret");
+  }
 });
 
 test("structurally incomplete assignments fail closed", () => {
@@ -582,11 +542,11 @@ https://west.example/v1"""
 temp_env_key = '''WEST_API_KEY'''
 `;
 
-  assert.deepEqual(resolveExistingCodexApiConfig(content, { WEST_API_KEY: "secret" }), {
+  assert.deepEqual(resolveExistingCodexApiConfig(content, { OPENAI_API_KEY: "secret" }), {
     providerId: "foo.bar",
     providerName: "Team West",
     baseUrl: "https://west.example/v1",
-    envKey: "WEST_API_KEY",
+    envKey: "OPENAI_API_KEY",
     apiKey: "secret"
   });
 });

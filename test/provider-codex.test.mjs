@@ -96,48 +96,24 @@ test("Codex auth refuses env keys that collide with structured auth state", () =
       /conflicts with structured Codex auth state/iu
     );
     assert.deepEqual(auth, { [envKey]: { userOwned: true }, KEEP: "value" });
-    assert.throws(
-      () => resolveExistingCodexApiConfig(`model_provider = "custom"
-
-[model_providers.custom]
-temp_env_key = "${envKey}"
-`, auth),
-      /conflicts with structured Codex auth state/iu
-    );
   }
 });
 
-test("Codex custom provider does not reuse a personal OpenAI API key", () => {
+test("Codex always reads OPENAI_API_KEY regardless of the configured provider key", () => {
   const existing = resolveExistingCodexApiConfig(`model_provider = "custom"
 
 [model_providers.custom]
 temp_env_key = "CUSTOM_API_KEY"
 `, {
-    OPENAI_API_KEY: "personal-secret"
+    CUSTOM_API_KEY: "legacy-secret",
+    OPENAI_API_KEY: "openai-secret"
   });
 
-  assert.equal(existing.envKey, "CUSTOM_API_KEY");
-  assert.equal(existing.apiKey, "");
-  assert.equal("legacyEnvKeys" in existing, false);
+  assert.equal(existing.envKey, "OPENAI_API_KEY");
+  assert.equal(existing.apiKey, "openai-secret");
 });
 
-test("Codex derives custom provider env keys without reusing personal OpenAI credentials", () => {
-  for (const requiresOpenAiAuth of ["", "requires_openai_auth = true\n"]) {
-    const existing = resolveExistingCodexApiConfig(`model_provider = "custom"
-
-[model_providers.custom]
-name = "Custom"
-base_url = "https://custom.example/v1"
-${requiresOpenAiAuth}`, {
-      OPENAI_API_KEY: "personal-secret"
-    });
-
-    assert.match(existing.envKey, /^ABELWORKFLOW_PROVIDER_[A-F0-9]{64}_API_KEY$/u);
-    assert.equal(existing.apiKey, "");
-  }
-});
-
-test("Codex derives and reads the OpenAI provider env key", () => {
+test("Codex reads the OpenAI provider env key", () => {
   const existing = resolveExistingCodexApiConfig(`model_provider = "openai"
 
 [model_providers.openai]
