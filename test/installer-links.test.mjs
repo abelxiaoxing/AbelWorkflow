@@ -14,7 +14,7 @@ import {
 import { tmpdir } from "node:os";
 import { dirname, join, sep, win32 } from "node:path";
 import test from "node:test";
-import { hashBytes } from "../lib/installer/assets.mjs";
+import { hashBytes } from "../lib/utils.mjs";
 import { createPaths } from "../lib/paths.mjs";
 import {
   ensureManagedLink,

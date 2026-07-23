@@ -17,7 +17,7 @@ import {
   installWorkflow,
   packageVersionFor
 } from "../lib/installer/install.mjs";
-import { hashBytes } from "../lib/installer/assets.mjs";
+import { hashBytes } from "../lib/utils.mjs";
 import { readInstallMetadata, writeInstallMetadata } from "../lib/installer/state.mjs";
 
 async function withFixture(run) {

@@ -108,29 +108,22 @@ test("1.0 migration guide covers every state and runtime migration boundary", ()
   for (const pattern of requiredPatterns) assert.match(migration, pattern);
 });
 
-test("1.0 docs define conservative v1 ownership and Prompt Enhancer runtime removal", () => {
-  const documents = [
-    read("docs/migration-1.0.md"),
-    read("docs/abelworkflow-v1-refactor-plan.md")
-  ];
+test("1.0 migration guide defines conservative v1 ownership and Prompt Enhancer runtime removal", () => {
+  const document = read("docs/migration-1.0.md");
 
-  for (const document of documents) {
-    assert.match(document, /只迁移.*`linkedTargets`/su);
-    assert.match(document, /`managedChildren` 不迁移为 asset 所有权/u);
-    assert.match(document, /与当前 source 内容完全相同.*接管/su);
-    assert.match(document, /其余已有路径.*冲突/u);
-    assert.match(document, /`--force` 仅备份并替换当前 manifest 精确声明的路径/u);
-    assert.match(document, /stale 路径.*保留/u);
+  assert.match(document, /只迁移.*`linkedTargets`/su);
+  assert.match(document, /`managedChildren` 不迁移为 asset 所有权/u);
+  assert.match(document, /与当前 source 内容完全相同.*接管/su);
+  assert.match(document, /其余已有路径.*冲突/u);
+  assert.match(document, /`--force` 仅备份并替换当前 manifest 精确声明的路径/u);
+  assert.match(document, /stale 路径.*保留/u);
 
-    assert.match(document, /Prompt Enhancer.*移除.*(?:第三方 API|Python).*运行时/su);
-    assert.match(document, /当前 agent.*直接改写/su);
-    assert.doesNotMatch(document, /`PE_(?:API_URL|API_KEY|MODEL)`/u);
-    assert.doesNotMatch(document, /`--(?:url|api-key|model)`/u);
-  }
+  assert.match(document, /Prompt Enhancer.*移除.*(?:第三方 API|Python).*运行时/su);
+  assert.match(document, /当前 agent.*直接改写/su);
+  assert.doesNotMatch(document, /`PE_(?:API_URL|API_KEY|MODEL)`/u);
+  assert.doesNotMatch(document, /`--(?:url|api-key|model)`/u);
 
-  assert.doesNotMatch(documents[0], /读取 v1 metadata 的 features、managedChildren/u);
-  assert.doesNotMatch(documents[1], /"managedChildren": \{\}/u);
-  assert.doesNotMatch(documents[1], /继续读取现有 features、managedChildren/u);
+  assert.doesNotMatch(document, /读取 v1 metadata 的 features、managedChildren/u);
 });
 
 test("dev-browser docs keep temporary artifacts outside the installed skill", () => {

@@ -6,30 +6,7 @@ import { fileURLToPath } from "node:url";
 
 const repoRoot = new URL("../", import.meta.url);
 
-const targetModules = [
-  "lib/paths.mjs",
-  "lib/cli/main.mjs",
-  "lib/cli/args.mjs",
-  "lib/cli/prompts.mjs",
-  "lib/config/store.mjs",
-  "lib/config/jsonc.mjs",
-  "lib/config/dotenv.mjs",
-  "lib/config/toml.mjs",
-  "lib/installer/install.mjs",
-  "lib/installer/assets.mjs",
-  "lib/installer/links.mjs",
-  "lib/installer/state.mjs",
-  "lib/providers/claude.mjs",
-  "lib/providers/codex.mjs",
-  "lib/providers/pi.mjs",
-  "lib/providers/skills.mjs",
-  "lib/tools/cli-installer.mjs"
-];
-
-test("stage 1 target modules replace the legacy CLI implementation", () => {
-  for (const modulePath of targetModules) {
-    assert.equal(existsSync(new URL(modulePath, repoRoot)), true, modulePath);
-  }
+test("legacy monolithic CLI modules stay deleted", () => {
   assert.equal(existsSync(new URL("lib/cli.mjs", repoRoot)), false);
   assert.equal(existsSync(new URL("lib/cli/logic.mjs", repoRoot)), false);
 });

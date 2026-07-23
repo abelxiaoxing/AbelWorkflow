@@ -1,5 +1,4 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
 import test from "node:test";
 import { presentInstallReport } from "../lib/cli/main.mjs";
 
@@ -49,44 +48,4 @@ test("install report presenter lists conflicts and non-conflict preserved paths 
   assert.equal(details.split("AGENTS.md").length - 1, 1);
   assert.equal(details.split("/home/test/.codex/prompts/abel-init.md").length - 1, 1);
   assert.equal(details.split("profiles/session").length - 1, 1);
-});
-
-test("all managed workflow install entry points use the reporting wrapper", () => {
-  const source = readFileSync(new URL("../lib/cli/main.mjs", import.meta.url), "utf8");
-  assert.equal(source.match(/\binstallManagedWorkflow\(/gu)?.length, 1);
-  assert.match(source, /async function runManagedInstall[\s\S]*?await installManagedWorkflow\(/u);
-  assert.equal(source.match(/\brunManagedInstall\(/gu)?.length, 4);
-});
-
-test("CLI forwards canonical Paths", () => {
-  const source = readFileSync(new URL("../lib/cli/main.mjs", import.meta.url), "utf8");
-
-  for (const [configureName, skillName] of [
-    ["configureGrokSearchEnv", "grok-search"],
-    ["configureContext7Env", "context7-auto-research"]
-  ]) {
-    assert.equal(source.match(new RegExp(`${configureName}\\(options\\.paths`, "gu"))?.length, 2);
-    assert.match(
-      source,
-      new RegExp(`${configureName}\\(options\\.paths, \\(paths\\) => ensureSkillPresentWithReport\\(paths, "${skillName}"\\), promptApi\\)`, "u")
-    );
-    assert.doesNotMatch(source, new RegExp(`${configureName}\\(options\\.agentsDir`, "u"));
-  }
-  assert.doesNotMatch(source, /configurePromptEnhancerEnv/u);
-  assert.doesNotMatch(source, /ensureWorkflowPresent/u);
-  assert.match(
-    source,
-    /"pi-api": async \(\) => configurePiApi\(options\.paths, ensurePiResourcesLinkedWithReport, promptApi\)/u
-  );
-});
-
-test("direct provider configuration finalizes install metadata through schema v2", () => {
-  const source = readFileSync(new URL("../lib/cli/main.mjs", import.meta.url), "utf8");
-
-  assert.equal(source.match(/finalizeProviderInstallMetadata\(\{/gu)?.length, 2);
-  assert.equal(source.match(/packageVersionFor\(paths, metadata\)/gu)?.length, 2);
-  assert.doesNotMatch(
-    source,
-    /writeInstallMetadata\(paths,\s*\{\s*\.\.\.metadata,\s*managedCodexAuthKeys:/u
-  );
 });

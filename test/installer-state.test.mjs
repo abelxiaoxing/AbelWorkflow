@@ -119,7 +119,6 @@ test("provider metadata finalization preserves valid schema v2 fields", () => {
   const previousMetadata = {
     schemaVersion: 2,
     packageVersion: "1.0.0",
-    installedAt: "stable-time",
     managedFiles: { "AGENTS.md": "c".repeat(64) },
     managedCodexAuthKeys: ["CODEX_KEY"],
     managedCodexAgentFiles: agentHashes,

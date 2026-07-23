@@ -7,7 +7,6 @@ import {
   readTopLevelTomlString,
   removeTomlSection,
   removeTopLevelTomlField,
-  splitTopLevelTomlContent,
   updateTomlSectionFields,
   updateTopLevelTomlField
 } from "../lib/config/toml.mjs";
@@ -165,19 +164,19 @@ keep = true
 });
 
 test("section detection accepts normal and array table keys containing brackets", () => {
-  const standard = splitTopLevelTomlContent(`root = true
+  for (const header of [`[servers."region]east"]`, `[[servers."region]east"]]`]) {
+    const next = updateTopLevelTomlField(`root = true
 
-[servers."region]east"]
+${header}
+enabled = true
+`, "added", "x");
+    assert.equal(next, `root = true
+added = "x"
+
+${header}
 enabled = true
 `);
-  const array = splitTopLevelTomlContent(`root = true
-
-[[servers."region]east"]]
-enabled = true
-`);
-
-  assert.equal(standard.rest, `[servers."region]east"]\nenabled = true\n`);
-  assert.equal(array.rest, `[[servers."region]east"]]\nenabled = true\n`);
+  }
 });
 
 test("Codex updates equivalent quoted provider key paths in place", () => {

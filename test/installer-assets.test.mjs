@@ -16,7 +16,8 @@ import { constants } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { hashBytes, syncManagedFiles } from "../lib/installer/assets.mjs";
+import { syncManagedFiles } from "../lib/installer/assets.mjs";
+import { hashBytes } from "../lib/utils.mjs";
 import {
   buildInstallMetadata,
   readInstallMetadata,

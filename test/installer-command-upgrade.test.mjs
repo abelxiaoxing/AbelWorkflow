@@ -4,16 +4,26 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import test from "node:test";
 
-import { hashBytes } from "../lib/installer/assets.mjs";
 import { installWorkflow } from "../lib/installer/install.mjs";
 import { ensureManagedLink } from "../lib/installer/links.mjs";
 import {
   buildInstallMetadata,
-  linkedTargetsFromResults,
   readInstallMetadata,
   writeInstallMetadata
 } from "../lib/installer/state.mjs";
 import { createPaths } from "../lib/paths.mjs";
+import { hashBytes } from "../lib/utils.mjs";
+
+function linkedTargetsFromResults(results) {
+  return Object.fromEntries(results
+    .filter((result) => result.sourcePath)
+    .map((result) => [result.targetPath, {
+      sourcePath: result.sourcePath,
+      kind: result.kind,
+      mode: result.mode,
+      ...(result.targetHash ? { targetHash: result.targetHash } : {})
+    }]));
+}
 
 const repoRoot = new URL("../", import.meta.url);
 const currentCommands = ["abel-design.md", "abel-diagnose.md", "abel-implement.md", "abel-init.md"];
