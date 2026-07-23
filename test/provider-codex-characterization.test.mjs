@@ -8,7 +8,7 @@ test("mergeCodexAuthData preserves unowned auth data and replaces managed auth k
       envKey: "OPENAI_API_KEY",
       apiKey: "new-secret",
       managedAuthKeys: [],
-      expected: { OPENAI_API_KEY: "new-secret" }
+      expected: { auth_mode: "apikey", OPENAI_API_KEY: "new-secret" }
     },
     {
       auth: {
@@ -21,6 +21,7 @@ test("mergeCodexAuthData preserves unowned auth data and replaces managed auth k
       apiKey: "new-secret",
       managedAuthKeys: ["LEGACY_ONE", "LEGACY_TWO"],
       expected: {
+        auth_mode: "apikey",
         OPENAI_API_KEY: "new-secret",
         OPENAI_BASE_URL: "https://example.com/v1"
       }
@@ -39,6 +40,7 @@ test("mergeCodexAuthData preserves unowned auth data and replaces managed auth k
       apiKey: "fresh-secret",
       managedAuthKeys: ["OPENAI_API_KEY", "UNUSED_LEGACY"],
       expected: {
+        auth_mode: "apikey",
         CUSTOM_KEY: "keep-me",
         OPENAI_API_KEY: "fresh-secret",
         tokens: {
@@ -64,7 +66,7 @@ test("resolveExistingCodexApiConfig always reads OPENAI_API_KEY", () => {
 [model_providers.custom]
 name = "Custom"
 base_url = "https://custom.example/v1"
-temp_env_key = "CUSTOM_API_KEY"
+env_key = "CUSTOM_API_KEY"
 `;
 
   assert.deepEqual(resolveExistingCodexApiConfig(content, {

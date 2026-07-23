@@ -57,6 +57,7 @@ async function withCodexAgentFixture(run) {
 
 test("Codex auth merge preserves unknown fields and deletes only recorded managed keys", () => {
   const auth = {
+    auth_mode: "chatgpt",
     OPENAI_API_KEY: "old-managed",
     OLD_ABEL_KEY: "old-managed",
     USER_API_KEY: "user-owned",
@@ -70,6 +71,7 @@ test("Codex auth merge preserves unknown fields and deletes only recorded manage
   ]);
 
   assert.deepEqual(next, {
+    auth_mode: "apikey",
     NEW_ABEL_KEY: "new-secret",
     USER_API_KEY: "user-owned",
     tokens: { access_token: "keep-token" },
@@ -88,6 +90,16 @@ test("Codex auth clearing keeps unrelated and unrecorded keys", () => {
   assert.deepEqual(next, { STALE_BUT_UNRECORDED: "keep" });
 });
 
+test("Codex auth clearing removes API key mode and restores saved login state", () => {
+  const next = mergeCodexAuthData({
+    auth_mode: "apikey",
+    OPENAI_API_KEY: "old-managed",
+    tokens: { access_token: "keep-token" }
+  }, "OPENAI_API_KEY", undefined, ["OPENAI_API_KEY"]);
+
+  assert.deepEqual(next, { tokens: { access_token: "keep-token" } });
+});
+
 test("Codex auth refuses env keys that collide with structured auth state", () => {
   for (const envKey of ["tokens", "providers"]) {
     const auth = { [envKey]: { userOwned: true }, KEEP: "value" };
@@ -103,7 +115,7 @@ test("Codex always reads OPENAI_API_KEY regardless of the configured provider ke
   const existing = resolveExistingCodexApiConfig(`model_provider = "custom"
 
 [model_providers.custom]
-temp_env_key = "CUSTOM_API_KEY"
+env_key = "CUSTOM_API_KEY"
 `, {
     CUSTOM_API_KEY: "legacy-secret",
     OPENAI_API_KEY: "openai-secret"
@@ -144,7 +156,7 @@ test("Codex config migrates exact published developer instructions", async () =>
   const published = withoutDevelopmentContext(template)
     .replace("`/abel-*`", "`/oc:*`")
     .replace("- Copy this development context into every subagent task.\n", "");
-  assert.equal(sha256(published), "12e1e68407fc3e8aa60da2bedca71ec1aefa7c11c6a0d8821d5f4dcc5ccbd681");
+  assert.equal(sha256(published), "acb9b6d9c466ad4063b67d42dca96230af2a2a37d2e2b106bfb1c96f17fad4b8");
   const current = published.replace(
     "network_access = true\n",
     "network_access = true\nuser_setting = \"keep\"\n"
@@ -404,10 +416,14 @@ test("Codex agent deployment rejects unsafe agents containers before writing", a
 test("Codex targeted TOML update preserves comments and unknown sections", () => {
   const current = `# user comment
 model_provider = "old"
+preferred_auth_method = "chatgpt"
+temp_env_key = "CUSTOM_API_KEY"
 
 [model_providers.old]
 name = "Old"
 base_url = "https://old.example/v1"
+temp_env_key = "CUSTOM_API_KEY"
+env_key = "CUSTOM_API_KEY"
 custom_provider_field = "keep"
 
 [user_section]
@@ -432,6 +448,9 @@ custom_agent = "keep"
   assert.match(next, /^\[agents\]$/mu);
   assert.match(next, /^custom_agent = "keep"$/mu);
   assert.match(next, /^base_url = "https:\/\/new\.example\/v1"$/mu);
+  assert.doesNotMatch(next, /^env_key =/mu);
+  assert.doesNotMatch(next, /^temp_env_key =/mu);
+  assert.doesNotMatch(next, /^preferred_auth_method =/mu);
 });
 
 test("Codex targeted TOML update stops before an array-of-tables header", () => {
@@ -460,7 +479,7 @@ command = "user-command"
   assert.ok(providerStart >= 0 && arrayStart > providerStart);
   assert.match(providerSection, /^name = "Updated"$/mu);
   assert.match(providerSection, /^base_url = "https:\/\/new\.example\/v1"$/mu);
-  assert.match(providerSection, /^temp_env_key = "OPENAI_API_KEY"$/mu);
+  assert.doesNotMatch(providerSection, /^env_key =/mu);
   assert.match(arraySection, /^name = "user-array-name"$/mu);
   assert.match(arraySection, /^command = "user-command"$/mu);
 });
@@ -490,9 +509,9 @@ command = "user-command"
 
   assert.ok(providerStart >= 0 && arrayStart > providerStart);
   assert.match(providerSection, /^name = "Updated"$/mu);
-  assert.match(providerSection, /^temp_env_key = "OPENAI_API_KEY"$/mu);
+  assert.doesNotMatch(providerSection, /^env_key =/mu);
   assert.match(arraySection, /^name = "user-array-name"$/mu);
-  assert.doesNotMatch(arraySection, /^temp_env_key =/mu);
+  assert.doesNotMatch(arraySection, /^env_key =/mu);
 });
 
 test("Codex persistence uses content-aware config writes and sensitive auth writes", {

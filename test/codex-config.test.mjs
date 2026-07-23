@@ -71,6 +71,12 @@ test("buildCodexConfigContent preserves existing guardian_subagent", () => {
   assert.doesNotMatch(content, /approvals_reviewer = "reviewer"/u);
 });
 
+test("bundled Codex config defaults to full filesystem access", () => {
+  const bundledTemplate = readFileSync(new URL("../lib/templates/codex/config-base.toml", import.meta.url), "utf8");
+
+  assert.match(bundledTemplate, /^sandbox_mode = "danger-full-access"$/mu);
+});
+
 test("bundled Codex config does not disable Node TLS verification", () => {
   const bundledTemplate = readFileSync(new URL("../lib/templates/codex/config-base.toml", import.meta.url), "utf8");
 
