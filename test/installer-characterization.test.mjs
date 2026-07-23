@@ -18,11 +18,10 @@ test("package-root install copies Pi extensions into agents dir and links them",
     assert.equal(result.status, 0, result.stderr || result.stdout);
     const managedExtension = readFileSync(join(homeDir, ".agents", "extensions", "pi-gpt-responses-compat", "index.ts"), "utf8");
     const linkedExtension = readFileSync(join(homeDir, ".pi", "agent", "extensions", "pi-gpt-responses-compat", "index.ts"), "utf8");
-    const linkedTlsHelper = readFileSync(join(homeDir, ".pi", "agent", "extensions", "pi-gpt-responses-compat", "tls-fetch.mjs"), "utf8");
 
     assert.match(managedExtension, /before_provider_request/u);
     assert.match(linkedExtension, /before_provider_request/u);
-    assert.match(linkedTlsHelper, /createProviderTlsFetch/u);
+    assert.doesNotMatch(linkedExtension, /globalThis\.fetch|rejectUnauthorized/u);
   } finally {
     rmSync(homeDir, { recursive: true, force: true });
   }
@@ -139,8 +138,8 @@ test("package-root install preserves unknown legacy Pi files while adding the ma
       "agent",
       "extensions",
       "pi-gpt-responses-compat",
-      "tls-fetch.mjs"
-    ), "utf8"), /createProviderTlsFetch/u);
+      "index.ts"
+    ), "utf8"), /before_provider_request/u);
   } finally {
     rmSync(homeDir, { recursive: true, force: true });
   }

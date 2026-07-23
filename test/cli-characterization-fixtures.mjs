@@ -29,7 +29,6 @@ import {
   selectOrCancel
 } from "../lib/cli/prompts.mjs";
 import {
-  applyClaudeInsecureTlsSetting,
   buildDefaultClaudeSettings,
   mergeClaudeSettingsWithDefaults
 } from "../lib/providers/claude.mjs";
@@ -52,7 +51,6 @@ import {
   getRunCommandSpawnOptions,
   inferPackageManagerFromCommandPath
 } from "../lib/tools/cli-installer.mjs";
-import { piInsecureTlsHeader } from "../extensions/pi-gpt-responses-compat/tls-fetch.mjs";
 
 const defaultAgentsDir = "/home/test/.agents";
 const resolvePath = (value) => `/resolved/${value.replace(/^\/+/, "")}`;
@@ -102,7 +100,6 @@ function assertParseError(argv, expectedMessage) {
 }
 
 export {
-  applyClaudeInsecureTlsSetting,
   assert,
   assertInteractiveMenuSupported,
   assertNotCancelled,
@@ -138,7 +135,6 @@ export {
   parseArgs,
   parsePiModelIds,
   passwordPromptOptions,
-  piInsecureTlsHeader,
   readFileSync,
   required,
   requiredUnlessExisting,

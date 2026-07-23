@@ -83,42 +83,15 @@ test("Pi auth config preserves provider environment settings", () => {
   });
 });
 
-test("Pi extension does not disable TLS verification for the process", () => {
+test("Pi extension only applies Responses API payload compatibility", () => {
   const content = readFileSync(new URL("../extensions/pi-gpt-responses-compat/index.ts", import.meta.url), "utf8");
-  assert.doesNotMatch(content, /NODE_TLS_REJECT_UNAUTHORIZED/u);
+  assert.doesNotMatch(content, /globalThis\.fetch|dispatcher|rejectUnauthorized/u);
 });
 
 test("Pi Responses compatibility follows the model API instead of its Provider ID", () => {
   const content = readFileSync(new URL("../extensions/pi-gpt-responses-compat/index.ts", import.meta.url), "utf8");
   assert.match(content, /ctx\.model\?\.api !== "openai-responses"/u);
   assert.doesNotMatch(content, /ctx\.model\?\.provider !== "gpt"/u);
-});
-
-test("Pi current-provider config toggles only the managed insecure TLS request marker", () => {
-  const existing = {
-    providers: {
-      relay: {
-        headers: {
-          "x-existing": "keep",
-          [piInsecureTlsHeader]: "https://old.example"
-        }
-      }
-    }
-  };
-  const options = {
-    providerId: "relay",
-    baseUrl: "https://relay.example/v1",
-    api: "openai-responses",
-    apiKey: "secret",
-    modelIds: ["gpt-test"]
-  };
-
-  const strict = buildPiModelsConfig(existing, { ...options, insecureTls: false });
-  assert.deepEqual(strict.providers.relay.headers, { "x-existing": "keep" });
-
-  const insecure = buildPiModelsConfig(existing, { ...options, insecureTls: true });
-  assert.equal(insecure.providers.relay.headers[piInsecureTlsHeader], "https://relay.example");
-  assert.equal(insecure.providers.relay.headers["x-existing"], "keep");
 });
 
 test("resolveExistingPiApiConfig reads the current default provider URL and API key", () => {

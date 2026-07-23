@@ -32,8 +32,7 @@ test("Claude API update preserves unknown env, deny, hooks, timeout, and setting
   const next = buildClaudeApiSettings(current, {
     baseUrl: "https://relay.example",
     key: "new-secret",
-    model: "claude-custom",
-    insecureTls: false
+    model: "claude-custom"
   });
 
   assert.deepEqual(next.permissions, {
@@ -53,8 +52,7 @@ test("fresh Claude API settings retain safe non-permission defaults", () => {
   const result = buildClaudeApiSettings({}, {
     baseUrl: "https://relay.example",
     key: "new-secret",
-    model: "claude-custom",
-    insecureTls: false
+    model: "claude-custom"
   });
 
   assert.equal(result.env.DISABLE_TELEMETRY, "1");
